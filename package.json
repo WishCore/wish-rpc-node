@@ -1,0 +1,15 @@
+{
+  "name": "wish-rpc",
+  "version": "0.1.0",
+  "dependencies": {
+    "debug": "~1.0.4"
+  },
+  "devDependencies": {},
+  "repository": {
+    "type": "git",
+    "url": "git+ssh://wish.cto.fi:/git/wish-rpc#master"
+  },
+  "scripts": {
+    "test": "istanbul cover --hook-run-in-context _mocha -- -R spec"
+  }
+}
