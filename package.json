@@ -1,6 +1,7 @@
 {
   "name": "wish-rpc",
   "version": "0.1.0",
+  "main": "src/rpc.js",
   "dependencies": {
     "debug": "~1.0.4"
   },
