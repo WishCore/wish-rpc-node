@@ -17,11 +17,19 @@ var rpc = new RPC();
 
 rpc.insertMethods({
     _: {name: 'message'},
-    _add: { async: true },
+    _add: { 
+        doc: 'Add a message', 
+        examples: [
+            'message.add("Green fields")' ],
+        stability: 2,
+        async: true },
     add: function (req, res) {
         res.send('Added: '+req.args[0]);
     },
-    _list: { async: true },
+    _list: {
+        doc: 'List messages', 
+        stability: 3,
+        async: true },
     list: function (req, res) {
         res.send([
             { title: 'Blah,blah', body: 'This is some message' }
@@ -30,7 +38,25 @@ rpc.insertMethods({
 });
 ```
 
+### Invoke a method
+
+```js
+rpc.invoke('message.add', ['Hello RPC world!'], function(data) {
+    console.log("A response was received from rpc:", data);
+});
+```
+
+### List registered methods
+
+```js
+rpc.invoke('methods', [], function(data) {
+    console.log("Methods in rpc:", data);
+});
+```
+
 ### Accept requests
+
+Using WebSockets or HTTP requests alike, you can now call the `rpc.parse(request, context)`. The request object should contain `op`, `args` and `reply`.
 
 ```js
 this.messaging.on('rpc-request', function(err, msg) {
