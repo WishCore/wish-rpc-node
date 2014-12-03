@@ -88,16 +88,7 @@ RPC.prototype.listMethods = function(args, context) {
     return l;
 };
 
-RPC.prototype.registerModule = function(module) {
-    for (var i in module.methods) {
-        var o = module.methods[i];
-        this.functions[module.name+"."+i] = o;
-    }
-};
-
 RPC.prototype.parse = function(msg, context) {
-    var self = this;
-    
     try {
         if ( msg.op === 'methods' ) {
             msg.reply({ack: msg.id, data: this.listMethods(msg.args, context)});
@@ -105,55 +96,58 @@ RPC.prototype.parse = function(msg, context) {
         }
         if ( typeof this.methods[msg.op] === "undefined" ) {
             // service not found
-            msg.reply({ack: msg.id, err: true, data: { msg: "No method or permission denied: "+msg.op }});
+            msg.reply({ack: msg.id, err: true, data: "No method or permission denied: "+msg.op });
             return;
         } else {
             // service found
-            if ( this.modules[msg.op].async ) {
-                this.methods[msg.op].call(
-                        this.selfs[msg.op],
-                        { args: msg.args }, 
-                        { send: function(data) {
-                            msg.reply({ack: msg.id, data: data }); },
-                          emit: function(data) {
-                            msg.reply({sig: msg.id, data: data }); }
-                        },
-                        context);
-            } else {
-                var data = this.methods[msg.op].call(this.selfs[msg.op], msg.args, context);
-                if ( context.binary ) {
-                    msg.reply({ack: msg.id, data: data});
-                } else {
-                    msg.reply({ack: msg.id, data: data});
-                }
-            }
-            
-            return;
+            this.methods[msg.op].call(
+                    this.selfs[msg.op],
+                    { args: msg.args }, 
+                    { send: function(data) {
+                        msg.reply({ack: msg.id, data: data }); },
+                      emit: function(data) {
+                        msg.reply({sig: msg.id, data: data }); },
+                      error: function(data) {
+                        msg.reply({err: msg.id, data: data }); },
+                      close: function(data) {
+                        msg.reply({close: msg.id }); }
+                    },
+                    context);
         }
     } catch(e) {
-        console.log("Dynamic RPC failed to execute ", msg.op, e, e.stack);
+        debug("Dynamic RPC failed to execute ", msg.op, e, e.stack);
         try {
-            msg.reply({ack: msg.id, err: true, errmsg:e.toString(), data: 'caught error in: '+msg.op, debug: e.stack});
+            msg.reply({ack: msg.id, err: true, data: 'caught error in '+msg.op+': '+e.toString(), debug: e.stack});
         } catch(e) {
-            msg.reply({err: "rpc", errmsg:e.toString()});
+            msg.reply({err: true, data: "rpc", errmsg:e.toString()});
         }
     }
 };
 
 RPC.prototype.invoke = function(op, args, cb) {
+    if( !Array.isArray(args) ) {
+        args = [args];
+    }
+    
+    if (typeof cb !== 'function') {
+        throw new Error('RPC invoke requires callback function as third argument');
+    }
     
     var msg = {
         op: op,
         args: args,
         id: ++invokeId,
         reply: function(reply) {
-            cb(null, reply);
+            if ( reply.err ) {
+                cb(true, reply.data);
+            } else {
+                cb(null, reply.data);
+            }
         }
     };
     var context = {
         clientType: 'invoke',
-        clientId: 'invokedViaRPCInvoke',
-        binary: true
+        clientId: 'invokedViaRPCInvoke'
     };
     this.parse(msg, context);
 };
