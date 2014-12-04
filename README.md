@@ -5,7 +5,7 @@
 Need to have permission to fetch packages from `wish.cto.fi:8080` (sinopia server), and `npm` configured to download from there.
 
 ```sh
-npm install wish-bson
+npm install wish-rpc
 ```
 
 ### Register methods
