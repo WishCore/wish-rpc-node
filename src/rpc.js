@@ -73,6 +73,10 @@ RPC.prototype.insertMethods = function(o) {
     }
 };
 
+RPC.prototype.accessControl = function(plugin) {
+    this.acl = plugin;
+};
+
 RPC.prototype.listMethods = function(args, context) {
     var l = {};
     for (var i in this.modules) {
@@ -89,6 +93,7 @@ RPC.prototype.listMethods = function(args, context) {
 };
 
 RPC.prototype.parse = function(msg, context) {
+    var self = this;
     try {
         if ( msg.op === 'methods' ) {
             msg.reply({ack: msg.id, data: this.listMethods(msg.args, context)});
@@ -96,32 +101,47 @@ RPC.prototype.parse = function(msg, context) {
         }
         if ( typeof this.methods[msg.op] === "undefined" ) {
             // service not found
-            msg.reply({ack: msg.id, err: true, data: "No method or permission denied: "+msg.op });
+            msg.reply({ack: msg.id, err: msg.id, data: { code: 300, msg: "No method found: "+msg.op } });
+            return;
+        } else if ( typeof this.acl === 'function' ) {
+            this.acl(this.modules[msg.op].fullname, this.modules[msg.op].acl, context, function(err, allowed) {
+                if(err) {
+                    return msg.reply({ack: msg.id, err: msg.id, data: { code: 301, msg: "Access control error: "+msg.op } });
+                } else if (!allowed) {
+                    return msg.reply({ack: msg.id, err: msg.id, data: { code: 302, msg: "Permission denied: "+msg.op } });
+                }
+                
+                self.invokeRaw(msg, context);
+            });
             return;
         } else {
-            // service found
-            this.methods[msg.op].call(
-                    this.selfs[msg.op],
-                    { args: msg.args }, 
-                    { send: function(data) {
-                        msg.reply({ack: msg.id, data: data }); },
-                      emit: function(data) {
-                        msg.reply({sig: msg.id, data: data }); },
-                      error: function(data) {
-                        msg.reply({err: msg.id, data: data }); },
-                      close: function(data) {
-                        msg.reply({close: msg.id }); }
-                    },
-                    context);
+            // no access control, just invoke
+            self.invokeRaw(msg, context);
         }
     } catch(e) {
         debug("Dynamic RPC failed to execute ", msg.op, e, e.stack);
         try {
-            msg.reply({ack: msg.id, err: true, data: 'caught error in '+msg.op+': '+e.toString(), debug: e.stack});
+            msg.reply({ack: msg.id, err: msg.id, data: 'caught error in '+msg.op+': '+e.toString(), debug: e.stack});
         } catch(e) {
-            msg.reply({err: true, data: "rpc", errmsg:e.toString()});
+            msg.reply({err: msg.id, data: "rpc", errmsg:e.toString()});
         }
     }
+};
+
+RPC.prototype.invokeRaw = function(msg, context) {
+    this.methods[msg.op].call(
+        this.selfs[msg.op],
+        { args: msg.args }, 
+        { send: function(data) {
+            msg.reply({ack: msg.id, data: data }); },
+          emit: function(data) {
+            msg.reply({sig: msg.id, data: data }); },
+          error: function(data) {
+            msg.reply({err: msg.id, data: data }); },
+          close: function(data) {
+            msg.reply({close: msg.id }); }
+        },
+        context);
 };
 
 RPC.prototype.invoke = function(op, args, cb) {
