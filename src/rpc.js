@@ -104,11 +104,16 @@ RPC.prototype.parse = function(msg, context) {
             msg.reply({ack: msg.id, err: msg.id, data: { code: 300, msg: "No method found: "+msg.op } });
             return;
         } else if ( typeof this.acl === 'function' ) {
-            this.acl(this.modules[msg.op].fullname, this.modules[msg.op].acl, context, function(err, allowed) {
+            this.acl(this.modules[msg.op].fullname, this.modules[msg.op].acl, context, function(err, allowed, permissions) {
                 if(err) {
                     return msg.reply({ack: msg.id, err: msg.id, data: { code: 301, msg: "Access control error: "+msg.op } });
                 } else if (!allowed) {
                     return msg.reply({ack: msg.id, err: msg.id, data: { code: 302, msg: "Permission denied: "+msg.op } });
+                }
+
+                context.permissions = {};
+                for(var i in permissions) {
+                    context.permissions[permissions[i]] = true;
                 }
                 
                 self.invokeRaw(msg, context);
