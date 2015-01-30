@@ -2,7 +2,7 @@
   "name": "wish-rpc",
   "author": "André Kaustell <andre.kaustell@controlthings.fi>",
   "description": "An RPC implementation for Node.js, initally developed for the Wish project.",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "main": "src/rpc.js",
   "dependencies": {
     "debug": "~1.0.4"
