@@ -41,7 +41,7 @@ rpc.insertMethods({
 ### Invoke a method
 
 ```js
-rpc.invoke('message.add', ['Hello RPC world!'], function(data) {
+rpc.invoke('message.add', ['Hello RPC world!'], function(err, data) {
     console.log("A response was received from rpc:", data);
 });
 ```
@@ -49,7 +49,7 @@ rpc.invoke('message.add', ['Hello RPC world!'], function(data) {
 ### List registered methods
 
 ```js
-rpc.invoke('methods', [], function(data) {
+rpc.invoke('methods', [], function(err, data) {
     console.log("Methods in rpc:", data);
 });
 ```
