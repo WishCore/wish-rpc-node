@@ -8,25 +8,43 @@ describe('RPC test', function () {
     before(function (done) {
         rpc = new Rpc();
         rpc.insertMethods({
-            _: {name: 'fw-update'},
-            _state: {doc: 'Send a ucp write request'},
-            state: function (req, res) {
-                res.send('hello '+ req.args[0]);
+            _fwupdate: {},
+            fwupdate: {
+                _debug: { doc: 'Bunch of debug related functions.' },
+                debug: {
+                    _enable: {doc: 'Enable debug mode'},
+                    enable: function (req, res) {
+                        res.send('enabled');
+                    },
+                    _disable: {doc: 'Disable debug mode'},
+                    disable: function (req, res) {
+                        res.send('disabled');
+                    }
+                },
+                _state: {doc: 'Send a ucp write request'},
+                state: function (req, res) {
+                    res.send('hello '+ req.args[0]);
+                },
+                _updateState: {doc: 'Send a ucp write request'},
+                updateState: function (req, res) {
+                    res.send('That is done.');
+                }
             },
-            _updateState: {doc: 'Send a ucp write request'},
-            updateState: function (req, res) {
-                self.localStorage.save({applicationState: req.args[0]}, function (err, oids) {
-                    console.log("updated app state.");
-                });
+            _list: {doc: 'Get a list'},
+            list: function (req, res) {
+                res.send(['hello', 'this', 'is', 'the', 'list', { that: 'is', great: true }]);
             }
         });
 
         rpc.insertMethods({
-            _: {name: 'signaling'},
-            _login: {doc: 'Send a ucp write request'},
+            _login: {doc: 'Login to service'},
             login: function (req, res) {
                 res.emit('hello');
                 res.send('world');
+            },
+            _logout: {doc: 'Logout from service'},
+            logout: function (req, res) {
+                res.send('done');
             }
         });
         
@@ -34,15 +52,22 @@ describe('RPC test', function () {
     });
     
     it('should make a basic request', function (done) {
-        rpc.invoke('fw-update.state', ['world'], function (err, data) {
+        rpc.invoke('fwupdate.state', ['world'], function (err, data) {
             assert.equal(data, 'hello world');
+            done();
+        });
+    });
+    
+    it('should make a basic request deep', function (done) {
+        rpc.invoke('fwupdate.debug.enable', [], function (err, data) {
+            assert.equal(data, 'enabled');
             done();
         });
     });
 
     it('should throw error when no callback specified', function (done) {
         try {
-            rpc.invoke('fw-update.state', ['world']);
+            rpc.invoke('fwupdate.state', ['world']);
         } catch(e) {
             done();
             return;
@@ -52,8 +77,10 @@ describe('RPC test', function () {
 
     it('should list available methods', function (done) {
         rpc.invoke('methods', [], function (err, data) {
+            //console.log("list of methods", err, data);
             try {
-                assert.equal(data['signaling.login'].fullname, 'signaling.login');
+                assert.equal(data['login'].fullname, 'login');
+                assert.equal(data['fwupdate.debug.enable'].doc, 'Enable debug mode');
             } catch(e) {
                 done(e);
                 return;
@@ -64,7 +91,7 @@ describe('RPC test', function () {
 
     it('should receive a signal and then end', function (done) {
         var state = 0;
-        rpc.invoke('signaling.login', [], function (err, data) {
+        rpc.invoke('login', [], function (err, data) {
             if (err) {
                 done(new Error('Problem in '+JSON.stringify(data)));
                 return;

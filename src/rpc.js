@@ -13,31 +13,23 @@
  * relay, module below.
  * 
  * Ex. 
- *   core.module = { 
- *      _: { name: 'MyModule' } 
- *      _doThis: { 
- *          doc: "This function does this, and emits progress each second and end.", 
- *          type: 'process' 
- *      },
- *      doThis: function(req,res) {
- *          ...
- *      }
- *      _relay: {
- *          type: 'sub'
- *      },
- *      relay: {
- *          _: {
- *              name: 'relay',
- *              type: 'built-in',
- *              version: '0.0.1'
- *          },
- *          _test: {},
- *          test: function() {},
- *          _list: {},
- *          list: function() {}
- *      },
- *
- *   }
+ *   rpc.insertMethods({ 
+ *       _doThis: { 
+ *           doc: "This function does this, and emits progress each second and end.", 
+ *       },
+ *       doThis: function(req,res) {
+ *           ...
+ *       },
+ *       _relay: {
+ *           doc: "A bunch of relay related functions"
+ *       },
+ *       relay: {
+ *           _test: {},
+ *           test: function() {},
+ *           _list: {},
+ *           list: function() {}
+ *       }
+ *   });
  */
 
 var debug = require('debug')('rpc');
@@ -49,54 +41,101 @@ function RPC() {
     this.modules = {};
     this.methods = {};
     this.selfs = {};
+    this.acl;
 }
 
 RPC.prototype.insertMethods = function(o) {
-    var path = o['_'] ? o['_'].name : false;
-    if (path) {
-        for (var i in o) {
-            if (i.substring(0, 1) !== '_') {
-                if (o['_' + i]) {
+    var path = '';
+    this.addMethods(path, o);
+};
+
+RPC.prototype.addMethods = function(path, o) {
+    //console.log("addMethods", path, o);
+    var prefix = (path?path+'.':'');
+    for (var i in o) {
+        if( i === '_' ) {
+            // module meta
+        } else if (i.substring(0, 1) !== '_') {
+            if (o['_' + i]) {
+                // publish is _funcName exists for funcName
+                
+                if (typeof o[i] === 'function') {
                     var ip = o['_' + i].name || i;
-                    o['_' + i].fullname = path + '.' + ip;
-                    
+                    o['_' + i].fullname = prefix + ip;
+
                     try {
-                        this.modules[path + '.' + ip] = o['_' + i];
-                        this.methods[path + '.' + ip] = o[i];
-                        this.selfs[path + '.' + ip] = o;
+                        this.modules[prefix + ip] = o['_' + i];
+                        this.methods[prefix + ip] = o[i];
+                        this.selfs[prefix + ip] = o;
                     } catch (e) {
                         console.log("Kaboom! ", e);
                     }
+                } else if(typeof o[i] === 'object') {
+                    // this is a sub item
+                    //this.modules[prefix + i] = o['_' + i];
+                    this.addMethods( prefix + i, o[i]);
                 }
+            } else {
+                // no _funcName found, do not publish via RPC
             }
         }
     }
 };
 
+/**
+ * plugin: function(resource, acl, context, cb) { cb(err, allowed, permissions) }
+ * plugin: function('core.login', { access: true }, { custom data }, cb) { cb(err, allowed, permissions) }
+ */
 RPC.prototype.accessControl = function(plugin) {
     this.acl = plugin;
 };
 
-RPC.prototype.listMethods = function(args, context) {
-    var l = {};
-    for (var i in this.modules) {
-        if ( context.clientType === 'admin' ) {
-            l[i] = this.modules[i];
-        } else if ( context.clientType === 'service' ) {
-            // should test for permissions
-            l[i] = this.modules[i];
-        } else {
-            l[i] = this.modules[i];
+RPC.prototype.listMethods = function(args, context, cb) {
+    var self = this;
+    var result = {};
+    
+    if(typeof this.acl === 'function') {
+        var l = [];
+        for (var i in this.modules) {
+            l.push(i);
         }
+
+        function checkAcl() {
+            var i = l.pop();
+            //console.log("checkAcl", i);
+            
+            if(!i) {
+                // we're done
+                //console.log("yoman:", result);
+                return cb(null, result);
+            }
+            
+            //console.log("acl--:", i, self.modules[i].acl, context);
+            self.acl(i, self.modules[i].acl, context, function(err, allowed, permissions) {
+                if(err || !allowed) { checkAcl(); return; }
+                //console.log("added:", i);
+                result[i] = self.modules[i];
+                checkAcl();
+            });
+        }
+
+        checkAcl();
+    } else {
+        //console.log("no acl.");
+        for (var i in this.modules) {
+            result[i] = this.modules[i];
+        }
+        cb(null, result);
     }
-    return l;
 };
 
 RPC.prototype.parse = function(msg, context) {
     var self = this;
     try {
         if ( msg.op === 'methods' ) {
-            msg.reply({ack: msg.id, data: this.listMethods(msg.args, context)});
+            this.listMethods(msg.args, context, function(err, data) {
+                msg.reply({ack: msg.id, data: data});
+            });            
             return;
         }
         if ( typeof this.methods[msg.op] === "undefined" ) {
@@ -112,8 +151,10 @@ RPC.prototype.parse = function(msg, context) {
                 }
 
                 context.permissions = {};
-                for(var i in permissions) {
-                    context.permissions[permissions[i]] = true;
+                if(permissions) {
+                    for(var i in permissions) {
+                        context.permissions[permissions[i]] = true;
+                    }
                 }
                 
                 self.invokeRaw(msg, context);
@@ -126,6 +167,7 @@ RPC.prototype.parse = function(msg, context) {
     } catch(e) {
         debug("Dynamic RPC failed to execute ", msg.op, e, e.stack);
         try {
+            //console.log("RPC caught error", e.stack);
             msg.reply({ack: msg.id, err: msg.id, data: 'caught error in '+msg.op+': '+e.toString(), debug: e.stack});
         } catch(e) {
             msg.reply({err: msg.id, data: "rpc", errmsg:e.toString()});
