@@ -94,6 +94,18 @@ RPC.prototype.listMethods = function(args, context, cb) {
     var self = this;
     var result = {};
     
+    function copy(s, filter) {
+        var d = {}; 
+        var filter = { 'fullname': true };
+        for(var j in s) {
+            if(filter[j]) { continue; }
+            d[j] = s[j];
+        }
+        return d;
+    }
+
+    var filter = { 'fullname': true };
+
     if(typeof this.acl === 'function') {
         var l = [];
         for (var i in this.modules) {
@@ -114,7 +126,7 @@ RPC.prototype.listMethods = function(args, context, cb) {
             self.acl(i, self.modules[i].acl, context, function(err, allowed, permissions) {
                 if(err || !allowed) { checkAcl(); return; }
                 //console.log("added:", i);
-                result[i] = self.modules[i];
+                result[i] = copy(self.modules[i], filter);
                 checkAcl();
             });
         }
@@ -123,7 +135,7 @@ RPC.prototype.listMethods = function(args, context, cb) {
     } else {
         //console.log("no acl.");
         for (var i in this.modules) {
-            result[i] = this.modules[i];
+            result[i] = copy(this.modules[i], filter);
         }
         cb(null, result);
     }
@@ -167,7 +179,7 @@ RPC.prototype.parse = function(msg, context) {
     } catch(e) {
         debug("Dynamic RPC failed to execute ", msg.op, e, e.stack);
         try {
-            //console.log("RPC caught error", e.stack);
+            console.log("RPC caught error", e.stack);
             msg.reply({ack: msg.id, err: msg.id, data: 'caught error in '+msg.op+': '+e.toString(), debug: e.stack});
         } catch(e) {
             msg.reply({err: msg.id, data: "rpc", errmsg:e.toString()});

@@ -79,7 +79,7 @@ describe('RPC test', function () {
         rpc.invoke('methods', [], function (err, data) {
             //console.log("list of methods", err, data);
             try {
-                assert.equal(data['login'].fullname, 'login');
+                assert.equal(typeof data['login'], 'object');
                 assert.equal(data['fwupdate.debug.enable'].doc, 'Enable debug mode');
             } catch(e) {
                 done(e);
