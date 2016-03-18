@@ -41,6 +41,8 @@ function RPC() {
     this.modules = {};
     this.methods = {};
     this.selfs = {};
+    this.writeStreams = {};
+    this.readStreams = {};
     this.acl;
 }
 
@@ -141,25 +143,37 @@ RPC.prototype.listMethods = function(args, context, cb) {
     }
 };
 
-RPC.prototype.parse = function(msg, context) {
+RPC.prototype.parse = function(msg, respond, context) {
     var self = this;
     try {
+        if ( msg.so ) {
+            //console.log("writing to stream:", msg.data);
+            var ok = this.writeStreams[msg.so].write(msg.data);
+            if (ok) {
+                console.log("We can take more!", msg.so);
+            } else {
+                console.log('stop stream:', msg.so);
+                respond({ stop: msg.so });
+                this.writeStreams[msg.so].on('drain', respond.bind({ drain: msg.so }));
+            }
+            return;
+        }
         if ( msg.op === 'methods' ) {
             this.listMethods(msg.args, context, function(err, data) {
-                msg.reply({ack: msg.id, data: data});
+                respond({ack: msg.id, data: data});
             });            
             return;
         }
         if ( typeof this.methods[msg.op] === "undefined" ) {
             // service not found
-            msg.reply({ack: msg.id, err: msg.id, data: { code: 300, msg: "No method found: "+msg.op } });
+            respond({ack: msg.id, err: msg.id, data: { code: 300, msg: "No method found: "+msg.op } });
             return;
         } else if ( typeof this.acl === 'function' ) {
             this.acl(this.modules[msg.op].fullname, this.modules[msg.op].acl, context, function(err, allowed, permissions) {
                 if(err) {
-                    return msg.reply({ack: msg.id, err: msg.id, data: { code: 301, msg: "Access control error: "+msg.op } });
+                    return respond({ack: msg.id, err: msg.id, data: { code: 301, msg: "Access control error: "+msg.op } });
                 } else if (!allowed) {
-                    return msg.reply({ack: msg.id, err: msg.id, data: { code: 302, msg: "Permission denied: "+msg.op } });
+                    return respond({ack: msg.id, err: msg.id, data: { code: 302, msg: "Permission denied: "+msg.op } });
                 }
 
                 context.permissions = {};
@@ -169,41 +183,71 @@ RPC.prototype.parse = function(msg, context) {
                     }
                 }
                 
-                self.invokeRaw(msg, context);
+                self.invokeRaw(msg, respond, context);
             });
             return;
         } else {
             // no access control, just invoke
-            self.invokeRaw(msg, context);
+            self.invokeRaw(msg, respond, context);
         }
     } catch(e) {
         debug("Dynamic RPC failed to execute ", msg.op, e, e.stack);
         try {
             console.log("RPC caught error", e.stack);
-            msg.reply({ack: msg.id, err: msg.id, data: 'caught error in '+msg.op+': '+e.toString(), debug: e.stack});
+            respond({ack: msg.id, err: msg.id, data: 'caught error in '+msg.op+': '+e.toString(), debug: e.stack});
         } catch(e) {
-            msg.reply({err: msg.id, data: "rpc", errmsg:e.toString()});
+            respond({err: msg.id, data: "rpc", errmsg:e.toString()});
         }
     }
 };
 
-RPC.prototype.invokeRaw = function(msg, context) {
+RPC.prototype.write = function(id, buffer) {
+    this.writeStreams[id].write(buffer);
+};
+
+RPC.prototype.end = function(id) {
+    delete this.writeStreams[id];
+};
+
+RPC.prototype.invokeRaw = function(msg, respond, context) {
+    var self = this;
+    
+    //console.log("invokeRaw: ", msg.stream);
+    
+    if(msg.write) {
+        return this.write(msg.write, msg.data);
+    } else if (msg.end) {
+        return this.end(msg.end);
+    }
+    
     this.methods[msg.op].call(
         this.selfs[msg.op],
-        { args: msg.args }, 
+        { 
+            args: msg.args,
+            pipe: function(writeStream) {
+                console.log("Got a write stream for ", msg.op, msg.id);
+                self.writeStreams[msg.id] = writeStream;
+                //msg.stream.pipe(writeStream);
+            }
+        }, 
         { send: function(data) {
-            msg.reply({ack: msg.id, data: data }); },
+            respond({ack: msg.id, data: data }); },
           emit: function(data) {
-            msg.reply({sig: msg.id, data: data }); },
+            respond({sig: msg.id, data: data }); },
           error: function(data) {
-            msg.reply({err: msg.id, data: data }); },
+            respond({err: msg.id, data: data }); },
           close: function(data) {
-            msg.reply({close: msg.id }); }
+            respond({close: msg.id }); },
+          pipe: function(readStream) {
+            console.log("Got a read stream for ", msg.op);
+          }
         },
         context);
 };
 
-RPC.prototype.invoke = function(op, args, cb) {
+RPC.prototype.invoke = function(op, args, stream, cb) {
+    if(typeof stream === 'function') { cb = stream; stream = null; };
+    
     if( !Array.isArray(args) ) {
         args = [args];
     }
@@ -215,20 +259,23 @@ RPC.prototype.invoke = function(op, args, cb) {
     var msg = {
         op: op,
         args: args,
-        id: ++invokeId,
-        reply: function(reply) {
-            if ( reply.err ) {
-                cb(true, reply.data);
-            } else {
-                cb(null, reply.data);
-            }
-        }
+        stream: stream,
+        id: ++invokeId
     };
     var context = {
         clientType: 'invoke',
         clientId: 'invokedViaRPCInvoke'
     };
-    this.parse(msg, context);
+    
+    var response = function(reply) {
+        if ( reply.err ) {
+            cb(true, reply.data);
+        } else {
+            cb(null, reply.data);
+        }
+    };
+    
+    this.parse(msg, response, context);
 };
 
 module.exports = {
