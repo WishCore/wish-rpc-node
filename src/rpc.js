@@ -154,8 +154,12 @@ RPC.prototype.parse = function(msg, respond, context) {
             } else {
                 console.log('stop stream:', msg.so);
                 respond({ stop: msg.so });
-                this.writeStreams[msg.so].on('drain', respond.bind({ drain: msg.so }));
             }
+            return;
+        }
+        if ( msg.se ) {
+            //console.log("end stream:", msg.se);
+            this.end(msg.se);
             return;
         }
         if ( msg.op === 'methods' ) {
@@ -206,6 +210,7 @@ RPC.prototype.write = function(id, buffer) {
 };
 
 RPC.prototype.end = function(id) {
+    this.writeStreams[id].end();
     delete this.writeStreams[id];
 };
 
@@ -214,11 +219,11 @@ RPC.prototype.invokeRaw = function(msg, respond, context) {
     
     //console.log("invokeRaw: ", msg.stream);
     
+    /*
     if(msg.write) {
         return this.write(msg.write, msg.data);
-    } else if (msg.end) {
-        return this.end(msg.end);
     }
+    */
     
     this.methods[msg.op].call(
         this.selfs[msg.op],
@@ -227,6 +232,13 @@ RPC.prototype.invokeRaw = function(msg, respond, context) {
             pipe: function(writeStream) {
                 console.log("Got a write stream for ", msg.op, msg.id);
                 self.writeStreams[msg.id] = writeStream;
+                writeStream.on('drain', function() {
+                    console.log("drained write stream");
+                    respond({ drain: msg.id });
+                });
+                writeStream.on('finish', function () {
+                    respond({ finish: msg.id });
+                });
                 //msg.stream.pipe(writeStream);
             }
         }, 

@@ -1,8 +1,8 @@
 var Rpc = require('../src/rpc.js').RPC;
 var Client = require('../src/rpc-client.js').Client;
 var assert = require('assert');
-var fs = require('fs');
 var stream = require('stream');
+var fs = require('fs');
 
 describe('RPC Stream Control', function () {
 
@@ -22,15 +22,13 @@ describe('RPC Stream Control', function () {
                 },
                 _uploadSlow: {doc: 'Upload data, but is slow to receive'},
                 uploadSlow: function (req, res) {
-                    var writable = new stream.Writable({highWaterMark: 10});
+                    var b = 0;
+                    var writable = new stream.Writable({highWaterMark: 1024});
                     writable._write = function (chunk, encoding, next) {
-                        // sets this._write under the hood
-                        console.log("writeable writing stuff", chunk);
-                        // An optional error can be passed as the first argument
-                        setTimeout(next, 200);
+                        b += chunk.length;
+                        setTimeout(next, 13);
                     };                    
                     req.pipe(writable);
-                    //res.emit('hello '+ req.args[0]);
                 },
                 _download: {doc: 'Download data'},
                 download: function (req, res) {
@@ -61,41 +59,27 @@ describe('RPC Stream Control', function () {
     });
 
     it('should stream upload', function(done) {
-        this.timeout(4000);
-        var fstream = fs.createReadStream('./stream.input');
-        var id = client.request('stream.uploadSlow', ['output.txt'], fstream, function(err, data) {
+        this.timeout(14000);
+
+        var readable = new stream.Readable();
+        var rs = 0;
+        readable._read = function () {
+            if(rs>200) {
+                this.push(null);
+            } else {
+                var chunk = new Buffer('Bahamas buys return ticket to America etc '+(++rs)+'!');
+                while ( this.push(chunk) ) {}
+            }
+        };        
+        
+        var id = client.request('stream.uploadSlow', ['output.txt'], readable, function(err, data) {
             console.log("stream.upload response:", err, data);
+            if(data === 'fine!') {
+                done();
+            }
         });
         
         console.log("got an id:", id);
-        
-        //client.send(id, new Buffer('hello,'));
-        //client.send(id, new Buffer('hello,'));
-        //client.send(id, new Buffer('hello,'));
-        //client.send(id, new Buffer('hello,'));
-        //client.send(id, new Buffer('hello'));
     });
 });
 
-
-
-        /*
-        bsonStream.on('readable', function() {
-            client.messageReceived            
-        });
-        
-        bsonStream.on('readable', function () {
-            var chunk;
-            while (null !== (chunk = bsonStream.read(8))) {
-                rpc.invokeRaw({
-                    write: '2',
-                    data: chunk
-                });
-                
-            }
-            rpc.invokeRaw({
-                end: '2'
-            });
-            done();
-        });        
-        */

@@ -25,7 +25,18 @@ Client.prototype.messageReceived = function(msg, next) {
             this.requests[msg.ack](null, msg.data);
         }
     } else if( msg.stop ) {
-        
+        this.outStreams[msg.stop].stop = true;
+    } else if( msg.finish ) {
+        console.log("finished streaming to server...", msg.finish);
+        this.requests[msg.finish](null, "fine!");
+        //this.outStreams[msg.finish].stop = true;
+    } else if( msg.drain ) {
+        if(this.outStreams[msg.drain].stop) {
+            this.outStreams[msg.drain].stop = false;
+            this.outStreams[msg.drain].stream.emit('readable');
+        } else {
+            console.log("  running, not starting again");
+        }
     }
     setTimeout(next, 250);
 };
@@ -61,7 +72,10 @@ Client.prototype.request = function(op, args, stream, cb) {
     
     if( !!stream ) {
         msg.stream = true;
-        this.outStreams[msg.id] = stream;
+        this.outStreams[msg.id] = {
+            stream: stream,
+            stop: false
+        };
         this.startStream(msg.id, stream);
     }
     
@@ -76,19 +90,36 @@ Client.prototype.request = function(op, args, stream, cb) {
 
 Client.prototype.startStream = function(id, input) {
     var self = this;
-    input.on('readable', function () {
-        console.log("the stream is readable...");
-        /*
-        var chunk;
-        while (null !== (chunk = input.read(8))) {
+    var chunkSize = 512;
+    var len = 0;
+
+    function read() {
+        if(self.outStreams[id].stop) { 
+            return; 
+        }
+        while (null !== (chunk = input.read(chunkSize))) {
+            len += chunk.length;
+            if(chunk.length !== chunkSize) {
+                console.log("We got this different piece.", chunk.length, 'ended:', input._readableState.ended);
+            }
+            //process.stdout.write('.');
             self.write({
                 so: id,
                 data: chunk
             });
-        }
-        //done();
-        */
-    });    
+            
+            if( input._readableState.ended ) {
+                self.write({ se: id });
+            }
+            
+            break;
+        }    
+    }
+
+    input.on('readable', read);
+    input.on('end', function() {
+        console.log("We're all done, read bytes", len);
+    });
 };
 
 module.exports = {
