@@ -32,7 +32,9 @@
  *   });
  */
 
+var EventEmitter = require('events').EventEmitter;
 var debug = require('debug')('rpc');
+var util = require('util');
 
 // counting id for rpc invoke function
 var invokeId = 0;
@@ -40,11 +42,12 @@ var invokeId = 0;
 function RPC() {
     this.modules = {};
     this.methods = {};
-    this.selfs = {};
-    this.writeStreams = {};
-    this.readStreams = {};
+    //this.selfs = {};
+    this.requests = {};
     this.acl;
 }
+
+util.inherits(RPC, EventEmitter);
 
 RPC.prototype.insertMethods = function(o) {
     var path = '';
@@ -68,7 +71,7 @@ RPC.prototype.addMethods = function(path, o) {
                     try {
                         this.modules[prefix + ip] = o['_' + i];
                         this.methods[prefix + ip] = o[i];
-                        this.selfs[prefix + ip] = o;
+                        //this.selfs[prefix + ip] = o;
                     } catch (e) {
                         console.log("Kaboom! ", e);
                     }
@@ -146,22 +149,17 @@ RPC.prototype.listMethods = function(args, context, cb) {
 RPC.prototype.parse = function(msg, respond, context) {
     var self = this;
     try {
-        if ( msg.so ) {
-            //console.log("writing to stream:", msg.data);
-            var ok = this.writeStreams[msg.so].write(msg.data);
-            if (ok) {
-                console.log("We can take more!", msg.so);
-            } else {
-                console.log('stop stream:', msg.so);
-                respond({ stop: msg.so });
+        if( msg.end ) {
+            var id = msg.end;
+            //console.log("end this request:", this.requests[id], id);
+            if (typeof this.requests[id].end === 'function') {
+                this.requests[id].end();
             }
+            delete this.requests[id];
+            self.emit('ended', id);
             return;
         }
-        if ( msg.se ) {
-            //console.log("end stream:", msg.se);
-            this.end(msg.se);
-            return;
-        }
+        
         if ( msg.op === 'methods' ) {
             this.listMethods(msg.args, context, function(err, data) {
                 respond({ack: msg.id, data: data});
@@ -205,54 +203,41 @@ RPC.prototype.parse = function(msg, respond, context) {
     }
 };
 
-RPC.prototype.write = function(id, buffer) {
-    this.writeStreams[id].write(buffer);
-};
-
-RPC.prototype.end = function(id) {
-    this.writeStreams[id].end();
-    delete this.writeStreams[id];
-};
-
 RPC.prototype.invokeRaw = function(msg, respond, context) {
     var self = this;
-    
-    //console.log("invokeRaw: ", msg.stream);
-    
-    /*
-    if(msg.write) {
-        return this.write(msg.write, msg.data);
-    }
-    */
-    
+
+    var reqCtx = { id: msg.id, end: null };
+    this.requests[msg.id] = reqCtx; // { yes:'yes' };
+
     this.methods[msg.op].call(
-        this.selfs[msg.op],
-        { 
-            args: msg.args,
-            pipe: function(writeStream) {
-                console.log("Got a write stream for ", msg.op, msg.id);
-                self.writeStreams[msg.id] = writeStream;
-                writeStream.on('drain', function() {
-                    console.log("drained write stream");
-                    respond({ drain: msg.id });
-                });
-                writeStream.on('finish', function () {
-                    respond({ finish: msg.id });
-                });
-                //msg.stream.pipe(writeStream);
-            }
-        }, 
+        reqCtx,
+        { args: msg.args },
         { send: function(data) {
+            if(!self.requests[msg.id]) {
+                throw new Error('No such request is active.');
+            }
+            self.emit('ended', msg.id);
+            delete self.requests[msg.id];
             respond({ack: msg.id, data: data }); },
           emit: function(data) {
+            if(!self.requests[msg.id]) {
+                throw new Error('No such request is active.');
+            }
             respond({sig: msg.id, data: data }); },
           error: function(data) {
+            if(!self.requests[msg.id]) {
+                throw new Error('No such request is active.');
+            }
+            self.emit('ended', msg.id);
+            delete self.requests[msg.id];
             respond({err: msg.id, data: data }); },
           close: function(data) {
-            respond({close: msg.id }); },
-          pipe: function(readStream) {
-            console.log("Got a read stream for ", msg.op);
-          }
+            if(!self.requests[msg.id]) {
+                throw new Error('No such request is active.');
+            }
+            self.emit('ended', msg.id);
+            delete self.requests[msg.id];
+            respond({close: msg.id }); }
         },
         context);
 };

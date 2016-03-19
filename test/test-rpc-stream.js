@@ -117,22 +117,4 @@ describe('RPC Stream Control', function () {
         push();
     });
 
-    /*
-    it('should write a stream', function (done) {
-        rpc.invoke('stream.upload', ['./stream.output'], fs.createReadStream('./stream.input'), function (err, data, opts) {
-            console.log("upload", err, data);
-            //console.log("self.writeStreams", rpc.writeStreams);
-            done();
-        });
-    });
-    */
-
-    /*
-    it('should read a stream', function (done) {
-        rpc.invoke('stream.download', ['largefile.tgz'], fs.createWriteStream('./download.file'), function (err, data) {
-            console.log("download", err, data);
-            done();
-        });
-    });
-    */
 });
