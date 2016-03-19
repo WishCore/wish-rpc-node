@@ -13,7 +13,7 @@ describe('RPC Stream Control', function () {
         rpc = new Rpc();
 
         var signaler = new EventEmitter();
-        setInterval(function() { signaler.emit('online', { luid: 'l1', ruid: 'r4' }); }, 100);
+        setInterval(function() { signaler.emit('online', { luid: 'l1', ruid: 'r4' }); }, 50);
         
         rpc.insertMethods({
             _event: {},
@@ -39,6 +39,13 @@ describe('RPC Stream Control', function () {
                     signaler.on('online', online);
                     
                     res.emit({ offline: {luid: 'l1', ruid: 'r1'} });
+                },
+                _identities: {doc: 'Get identities and updates'},
+                identities: function (req, res) {
+                    res.close();
+                },
+                _nothing: {doc: 'Does nothing'},
+                nothing: function (req, res) {
                 }
             }
         });
@@ -48,7 +55,7 @@ describe('RPC Stream Control', function () {
 
     var client;
 
-    it('should go client', function(done) {
+    it('should connect client', function(done) {
         var bsonStream = {
             write: function(data) { 
                 //console.log("about to send to rpc.parse:", data);
@@ -63,8 +70,11 @@ describe('RPC Stream Control', function () {
         client.on('ready', done);
     });
 
-    it('should stream upload', function(done) {
+    it('should get event.peers', function(done) {
         var reqid = client.request('event.peers', [], function(err, data) {
+            if(err) {
+                return console.log("Got an err:", err);
+            }
             if(data.offline && data.offline.ruid === 'r1') {
                 //console.log("requesting to cancel request", this.id);
                 setTimeout(this.cancel, 200);
@@ -73,6 +83,15 @@ describe('RPC Stream Control', function () {
         
         rpc.on('ended', function(id) {
             if (id === reqid) {
+                done();
+            }
+        });
+    });
+
+    it('should be ended by remote host', function(done) {
+        var reqid = client.request('event.identities', [], function(err, data, end) {
+            console.log("event.identities", err, data, end);
+            if(end) {
                 done();
             }
         });

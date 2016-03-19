@@ -152,9 +152,13 @@ RPC.prototype.parse = function(msg, respond, context) {
         if( msg.end ) {
             var id = msg.end;
             //console.log("end this request:", this.requests[id], id);
+            if( !this.requests[id] ) {
+                return console.log("No such request...", id);
+            }
             if (typeof this.requests[id].end === 'function') {
                 this.requests[id].end();
             }
+            respond({ end: id });
             delete this.requests[id];
             self.emit('ended', id);
             return;
@@ -218,26 +222,26 @@ RPC.prototype.invokeRaw = function(msg, respond, context) {
             }
             self.emit('ended', msg.id);
             delete self.requests[msg.id];
-            respond({ack: msg.id, data: data }); },
+            respond({ ack: msg.id, data: data }); },
           emit: function(data) {
             if(!self.requests[msg.id]) {
                 throw new Error('No such request is active.');
             }
-            respond({sig: msg.id, data: data }); },
+            respond({ sig: msg.id, data: data }); },
           error: function(data) {
             if(!self.requests[msg.id]) {
                 throw new Error('No such request is active.');
             }
             self.emit('ended', msg.id);
             delete self.requests[msg.id];
-            respond({err: msg.id, data: data }); },
+            respond({ err: msg.id, data: data }); },
           close: function(data) {
             if(!self.requests[msg.id]) {
                 throw new Error('No such request is active.');
             }
             self.emit('ended', msg.id);
             delete self.requests[msg.id];
-            respond({close: msg.id }); }
+            respond({ end: msg.id }); }
         },
         context);
 };

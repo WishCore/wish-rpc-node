@@ -18,15 +18,26 @@ function Client(send) {
 util.inherits(Client, EventEmitter);
 
 Client.prototype.messageReceived = function(msg, next) {
-    //console.log("RpcClient received message", msg);
+    console.log("RpcClient received message", msg);
     var end = !!(msg.ack || msg.end);
     
-    var id = msg.ack || msg.err || msg.sig;
+    var id = msg.ack || msg.err || msg.sig || msg.end;
     
     var request = this.requests[id];
 
     if(request && typeof request.cb === 'function') {
-        request.cb.call(request.context, !!msg.err, msg.data, true);
+        var err;
+        if(end) {
+            err = true;
+            msg.data = { str: 'Request terminated by remote host.', code: 101 };
+        } else {
+            err = !!msg.err ? msg.data : null;
+        }
+        request.cb.call(request.context, err, msg.data, end);
+    }
+    if(end) {
+        console.log("deleting this request", id);
+        delete this.requests[id];
     }
     setTimeout(next, 250);
 };
@@ -56,7 +67,15 @@ Client.prototype.request = function(op, args, stream, cb) {
         msg.id = ++this.id;
         this.requests[msg.id] = { 
             cb: cb, 
-            context: { id: msg.id, cancel: self.write.bind(null, {end: msg.id}) }
+            context: { 
+                id: msg.id, 
+                cancel: function() { 
+                    setTimeout(function() {
+                        console.log("timeout", msg.id, self.requests[msg.id]);
+                    }, 500);
+                    self.write({end: msg.id}); 
+                }
+            }
         };
     }
     
