@@ -207,6 +207,13 @@ RPC.prototype.parse = function(msg, respond, context) {
     }
 };
 
+// emit event to client
+/*
+RPC.prototype.emit = function(client, event, payload) {
+    this.clients[client]
+};
+*/
+
 RPC.prototype.invokeRaw = function(msg, respond, context) {
     var self = this;
 
@@ -280,5 +287,7 @@ RPC.prototype.invoke = function(op, args, stream, cb) {
 };
 
 module.exports = {
-    RPC: RPC
+    RPC: RPC,
+    Server: RPC,
+    Client: require('./rpc-client.js').Client
 };

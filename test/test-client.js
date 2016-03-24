@@ -18,6 +18,8 @@ describe('RPC Stream Control', function () {
         rpc.insertMethods({
             _event: {},
             event: {
+                _frame: { event: true },
+                frame: true,
                 _peers: {doc: 'Get peers and updates'},
                 peers: function (req, res) {
                     var online = function(peer) {
@@ -55,7 +57,7 @@ describe('RPC Stream Control', function () {
 
     var client;
 
-    it('should connect client', function(done) {
+    it('should set up client', function(done) {
         var bsonStream = {
             write: function(data) { 
                 //console.log("about to send to rpc.parse:", data);
@@ -67,14 +69,12 @@ describe('RPC Stream Control', function () {
         };
         
         client = new Client(bsonStream.write);
-        client.on('ready', done);
+        done();
     });
 
     it('should get event.peers', function(done) {
         var reqid = client.request('event.peers', [], function(err, data) {
-            if(err) {
-                return console.log("Got an err:", err);
-            }
+            if(err) { return; }
             if(data.offline && data.offline.ruid === 'r1') {
                 //console.log("requesting to cancel request", this.id);
                 setTimeout(this.cancel, 200);
@@ -90,7 +90,7 @@ describe('RPC Stream Control', function () {
 
     it('should be ended by remote host', function(done) {
         var reqid = client.request('event.identities', [], function(err, data, end) {
-            console.log("event.identities", err, data, end);
+            //console.log("event.identities", err, data, end);
             if(end) {
                 done();
             }

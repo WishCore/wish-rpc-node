@@ -7,18 +7,20 @@ function Client(send) {
     this.id = 0;
     this.requests = {};
     
+    /*
     setTimeout(function() {
         self.request('methods', function(err, data, opts) {
             //console.log("Save these methods.", err, data, opts);
             self.emit('ready');
         });
     });
+    */
 }
 
 util.inherits(Client, EventEmitter);
 
 Client.prototype.messageReceived = function(msg, next) {
-    console.log("RpcClient received message", msg);
+    //console.log("RpcClient received message", msg);
     var end = !!(msg.ack || msg.end);
     
     var id = msg.ack || msg.err || msg.sig || msg.end;
@@ -27,7 +29,7 @@ Client.prototype.messageReceived = function(msg, next) {
 
     if(request && typeof request.cb === 'function') {
         var err;
-        if(end) {
+        if(end && !msg.ack) {
             err = true;
             msg.data = { str: 'Request terminated by remote host.', code: 101 };
         } else {
@@ -36,7 +38,7 @@ Client.prototype.messageReceived = function(msg, next) {
         request.cb.call(request.context, err, msg.data, end);
     }
     if(end) {
-        console.log("deleting this request", id);
+        //console.log("deleting this request", id);
         delete this.requests[id];
     }
     setTimeout(next, 250);
