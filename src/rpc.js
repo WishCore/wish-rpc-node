@@ -196,7 +196,7 @@ RPC.prototype.parse = function(msg, respond, context) {
                     }
                 }
                 
-                self.invokeRaw(msg, respond, context);
+                process.nextTick(function() { self.invokeRaw(msg, respond, context); });
             });
             return;
         } else {
@@ -236,43 +236,54 @@ RPC.prototype.invokeRaw = function(msg, respond, context) {
         var reqCtx = { id: msg.id, end: null };
         this.requests[msg.id] = reqCtx;
 
-        this.methods[msg.op].call(
-            reqCtx,
-            { args: msg.args },
-            { send: function(data) {
-                if(!self.requests[msg.id]) {
-                    throw new Error('No such request is active.');
-                }
-                self.emit('ended', msg.id);
+        // call the actual method
+        try {
+            this.methods[msg.op].call(
+                reqCtx,
+                { args: msg.args },
+                { 
+                    send: function(data) {
+                        if(!self.requests[msg.id]) {
+                            throw new Error('No such request is active.');
+                        }
+                        self.emit('ended', msg.id);
 
-                if(self.requests[msg.id]) {
-                    delete self.requests[msg.id];
-                } else {
-                    console.log("deleting non-existing request:", msg.op, msg);
-                }
-                respond({ ack: msg.id, data: data }); },
-              emit: function(data) {
-                if(!self.requests[msg.id]) {
-                    console.log("emitting on nonexisting:", msg.id, self.requests);
-                    throw new Error('No such request is active. '+msg.id);
-                }
-                respond({ sig: msg.id, data: data }); },
-              error: function(data) {
-                if(!self.requests[msg.id]) {
-                    throw new Error('No such request is active.');
-                }
-                self.emit('ended', msg.id);
-                delete self.requests[msg.id];
-                respond({ err: msg.id, data: data }); },
-              close: function(data) {
-                if(!self.requests[msg.id]) {
-                    throw new Error('No such request is active.');
-                }
-                self.emit('ended', msg.id);
-                delete self.requests[msg.id];
-                respond({ end: msg.id }); }
-            },
-            context);
+                        if(self.requests[msg.id]) {
+                            delete self.requests[msg.id];
+                        } else {
+                            console.log("deleting non-existing request:", msg.op, msg);
+                        }
+                        respond({ ack: msg.id, data: data }); 
+                    },
+                    emit: function(data) {
+                        if(!self.requests[msg.id]) {
+                            console.log("emitting on nonexisting:", msg.id, self.requests);
+                            throw new Error('No such request is active. '+msg.id);
+                        }
+                        respond({ sig: msg.id, data: data }); 
+                    },
+                    error: function(data) {
+                        if(!self.requests[msg.id]) {
+                            throw new Error('No such request is active.');
+                        }
+                        self.emit('ended', msg.id);
+                        delete self.requests[msg.id];
+                        respond({ err: msg.id, data: data }); 
+                    },
+                    close: function(data) {
+                        if(!self.requests[msg.id]) {
+                            throw new Error('No such request is active.');
+                        }
+                        self.emit('ended', msg.id);
+                        delete self.requests[msg.id];
+                        respond({ end: msg.id }); 
+                    }
+                },
+                context);
+        } catch(e) {
+            console.log("Calling the method in RPC failed:", msg.op, msg.args, e.stack);
+            respond({ err: msg.id, data: { msg: 'rpc failed during execution of '+msg.op, code: 578 } });
+        }
     }
 };
 
