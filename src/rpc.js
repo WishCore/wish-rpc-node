@@ -36,18 +36,25 @@ var EventEmitter = require('events').EventEmitter;
 var debug = require('debug')('rpc');
 var util = require('util');
 
-// counting id for rpc invoke function
-var invokeId = 0;
-
 function RPC() {
     this.modules = {};
     this.methods = {};
     //this.selfs = {};
     this.requests = {};
+    // counting id for rpc invoke function
+    this.invokeId = 0;
     this.acl;
 }
 
 util.inherits(RPC, EventEmitter);
+
+RPC.prototype.destroy = function() {
+    for(var i in this.requests) {
+        if (typeof this.requests[i].end === 'function') {
+            this.requests[i].end();
+        }
+    }
+};
 
 RPC.prototype.insertMethods = function(o) {
     var path = '';
@@ -217,40 +224,56 @@ RPC.prototype.emit = function(client, event, payload) {
 RPC.prototype.invokeRaw = function(msg, respond, context) {
     var self = this;
 
-    var reqCtx = { id: msg.id, end: null };
-    this.requests[msg.id] = reqCtx; // { yes:'yes' };
+    if(typeof msg.id === 'undefined') {
+        // this is an event
+        this.methods[msg.op].call(
+            null,
+            { args: msg.args },
+            {},
+            context);
+    } else {
+        // this is a regular rpc request
+        var reqCtx = { id: msg.id, end: null };
+        this.requests[msg.id] = reqCtx;
 
-    this.methods[msg.op].call(
-        reqCtx,
-        { args: msg.args },
-        { send: function(data) {
-            if(!self.requests[msg.id]) {
-                throw new Error('No such request is active.');
-            }
-            self.emit('ended', msg.id);
-            delete self.requests[msg.id];
-            respond({ ack: msg.id, data: data }); },
-          emit: function(data) {
-            if(!self.requests[msg.id]) {
-                throw new Error('No such request is active.');
-            }
-            respond({ sig: msg.id, data: data }); },
-          error: function(data) {
-            if(!self.requests[msg.id]) {
-                throw new Error('No such request is active.');
-            }
-            self.emit('ended', msg.id);
-            delete self.requests[msg.id];
-            respond({ err: msg.id, data: data }); },
-          close: function(data) {
-            if(!self.requests[msg.id]) {
-                throw new Error('No such request is active.');
-            }
-            self.emit('ended', msg.id);
-            delete self.requests[msg.id];
-            respond({ end: msg.id }); }
-        },
-        context);
+        this.methods[msg.op].call(
+            reqCtx,
+            { args: msg.args },
+            { send: function(data) {
+                if(!self.requests[msg.id]) {
+                    throw new Error('No such request is active.');
+                }
+                self.emit('ended', msg.id);
+
+                if(self.requests[msg.id]) {
+                    delete self.requests[msg.id];
+                } else {
+                    console.log("deleting non-existing request:", msg.op, msg);
+                }
+                respond({ ack: msg.id, data: data }); },
+              emit: function(data) {
+                if(!self.requests[msg.id]) {
+                    console.log("emitting on nonexisting:", msg.id, self.requests);
+                    throw new Error('No such request is active. '+msg.id);
+                }
+                respond({ sig: msg.id, data: data }); },
+              error: function(data) {
+                if(!self.requests[msg.id]) {
+                    throw new Error('No such request is active.');
+                }
+                self.emit('ended', msg.id);
+                delete self.requests[msg.id];
+                respond({ err: msg.id, data: data }); },
+              close: function(data) {
+                if(!self.requests[msg.id]) {
+                    throw new Error('No such request is active.');
+                }
+                self.emit('ended', msg.id);
+                delete self.requests[msg.id];
+                respond({ end: msg.id }); }
+            },
+            context);
+    }
 };
 
 RPC.prototype.invoke = function(op, args, stream, cb) {
@@ -268,7 +291,7 @@ RPC.prototype.invoke = function(op, args, stream, cb) {
         op: op,
         args: args,
         stream: stream,
-        id: ++invokeId
+        id: ++this.invokeId
     };
     var context = {
         clientType: 'invoke',

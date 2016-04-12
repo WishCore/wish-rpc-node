@@ -2,7 +2,6 @@ var EventEmitter = require('events').EventEmitter;
 var util = require('util');
 
 function Client(send) {
-    var self = this;
     this.write = send;
     this.id = 0;
     this.requests = {};
@@ -19,9 +18,14 @@ function Client(send) {
 
 util.inherits(Client, EventEmitter);
 
+Client.prototype.destroy = function() {
+    this.requests = null;
+    this.write = null;
+};
+
 Client.prototype.messageReceived = function(msg, next) {
     //console.log("RpcClient received message", msg);
-    var end = !!(msg.ack || msg.end);
+    var end = !!(msg.err || msg.ack || msg.end);
     
     var id = msg.ack || msg.err || msg.sig || msg.end;
     
