@@ -321,7 +321,5 @@ RPC.prototype.invoke = function(op, args, stream, cb) {
 };
 
 module.exports = {
-    RPC: RPC,
-    Server: RPC,
-    Client: require('./rpc-client.js').Client
+    Server: RPC
 };
