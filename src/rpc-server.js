@@ -288,6 +288,7 @@ RPC.prototype.invokeRaw = function(msg, respond, context) {
 };
 
 RPC.prototype.invoke = function(op, args, stream, cb) {
+    var self = this;
     if(typeof stream === 'function') { cb = stream; stream = null; };
     
     if( !Array.isArray(args) ) {
@@ -310,11 +311,10 @@ RPC.prototype.invoke = function(op, args, stream, cb) {
     };
     
     var response = function(reply) {
-        if ( reply.err ) {
-            cb(true, reply.data);
-        } else {
-            cb(null, reply.data);
-        }
+        var ctx = { cancel: function() { self.parse({ end: msg.id }, function(){}); }, id: msg.id };
+        process.nextTick(function() { 
+            cb.call(ctx, reply.err ? true : null, reply.data); 
+        });
     };
     
     this.parse(msg, response, context);
