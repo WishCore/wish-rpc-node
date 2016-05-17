@@ -36,7 +36,7 @@ var EventEmitter = require('events').EventEmitter;
 var debug = require('debug')('rpc');
 var util = require('util');
 
-function RPC() {
+function RPC(methods) {
     this.modules = {};
     this.methods = {};
     //this.selfs = {};
@@ -44,6 +44,9 @@ function RPC() {
     // counting id for rpc invoke function
     this.invokeId = 0;
     this.acl;
+    if(methods) {
+        this.insertMethods(methods);
+    }
 }
 
 util.inherits(RPC, EventEmitter);
