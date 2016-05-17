@@ -70,6 +70,7 @@ Client.prototype.request = function(op, args, stream, cb) {
     }
     
     if( cb ) {
+        //console.log("we have a cb.", cb, new Error().stack);
         msg.id = ++this.id;
         this.requests[msg.id] = { 
             cb: cb, 
