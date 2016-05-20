@@ -184,7 +184,7 @@ RPC.prototype.parse = function(msg, respond, context) {
             // service not found
             respond({ack: msg.id, err: msg.id, data: { code: 300, msg: "No method found: "+msg.op } });
             return;
-        } else if ( typeof this.acl === 'function' ) {
+        } else if ( typeof this.acl === 'function' && !this.modules[msg.op].public ) {
             this.acl(this.modules[msg.op].fullname, this.modules[msg.op].acl, context, function(err, allowed, permissions) {
                 if(err) {
                     return respond({ack: msg.id, err: msg.id, data: { code: 301, msg: "Access control error: "+msg.op } });
@@ -202,6 +202,10 @@ RPC.prototype.parse = function(msg, respond, context) {
                 process.nextTick(function() { self.invokeRaw(msg, respond, context); });
             });
             return;
+        } else if (this.modules[msg.op].public) {
+            // no access control, just invoke
+            context.acl = {};
+            self.invokeRaw(msg, respond, context);
         } else {
             // no access control, just invoke
             self.invokeRaw(msg, respond, context);
@@ -227,12 +231,23 @@ RPC.prototype.emit = function(client, event, payload) {
 RPC.prototype.invokeRaw = function(msg, respond, context) {
     var self = this;
 
+    var acl = function (resource, permission, cb) {
+        console.log("ACL check on", arguments);
+        self.acl(resource, [permission], context, function (err, allowed, permissions) {
+            console.log("   rpc-server: permissions:", permissions);
+            cb(err, allowed);
+        });
+    };
+
     if(typeof msg.id === 'undefined') {
         // this is an event
+        var reqCtx = { 
+            acl: acl
+        };
         this.methods[msg.op].call(
             null,
             { args: msg.args },
-            { 
+            {
                 send: function() { console.log("Trying to send response to event. Dropping."); },
                 emit: function() { console.log("Trying to emit response to event. Dropping."); },
                 error: function() { console.log("Trying to respond with error to event. Dropping."); },
@@ -241,7 +256,11 @@ RPC.prototype.invokeRaw = function(msg, respond, context) {
             context);
     } else {
         // this is a regular rpc request
-        var reqCtx = { id: msg.id, end: null };
+        var reqCtx = { 
+            id: msg.id, 
+            end: null,
+            acl: acl
+        };
         this.requests[msg.id] = reqCtx;
 
         // call the actual method
@@ -320,7 +339,7 @@ RPC.prototype.invoke = function(op, args, stream, cb) {
     
     var response = function(reply) {
         var ctx = { cancel: function() { self.parse({ end: msg.id }, function(){}); }, id: msg.id };
-        process.nextTick(function() { 
+        process.nextTick(function() {
             cb.call(ctx, reply.err ? true : null, reply.data); 
         });
     };
