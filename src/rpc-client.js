@@ -33,7 +33,7 @@ Client.prototype.messageReceived = function(msg, next) {
 
     if(request && typeof request.cb === 'function') {
         var err;
-        if(end && !msg.ack) {
+        if(msg.end) {
             err = true;
             msg.data = { str: 'Request terminated by remote host.', code: 101 };
         } else {

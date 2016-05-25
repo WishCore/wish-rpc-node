@@ -232,10 +232,10 @@ RPC.prototype.invokeRaw = function(msg, respond, context) {
     var self = this;
 
     var acl = function (resource, permission, cb) {
-        console.log("ACL check on", arguments);
+        //console.log("ACL check on", arguments);
         self.acl(resource, [permission], context, function (err, allowed, permissions) {
-            console.log("   rpc-server: permissions:", permissions);
-            cb(err, allowed);
+            //console.log("   rpc-server: permissions:", permissions);
+            cb(err, allowed, permissions);
         });
     };
 
@@ -248,10 +248,10 @@ RPC.prototype.invokeRaw = function(msg, respond, context) {
             null,
             { args: msg.args },
             {
-                send: function() { console.log("Trying to send response to event. Dropping."); },
-                emit: function() { console.log("Trying to emit response to event. Dropping."); },
-                error: function() { console.log("Trying to respond with error to event. Dropping."); },
-                close: function() { console.log("Trying to close event. Dropping."); }
+                send: function() { console.log("Trying to send response to event ("+msg.op+"). Dropping."); },
+                emit: function() { console.log("Trying to emit response to event ("+msg.op+"). Dropping."); },
+                error: function() { console.log("Trying to respond with error to event ("+msg.op+"). Dropping."); },
+                close: function() { console.log("Trying to close event ("+msg.op+"). Dropping."); }
             },
             context);
     } else {
