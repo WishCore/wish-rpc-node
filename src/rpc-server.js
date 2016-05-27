@@ -81,6 +81,11 @@ RPC.prototype.addMethods = function(path, o) {
                     try {
                         this.modules[prefix + ip] = o['_' + i];
                         this.methods[prefix + ip] = o[i];
+
+                        var acl = this.modules[prefix + ip].acl;
+                        if( acl === true ) { this.modules[prefix + ip].acl = ['_call']; }
+                        if( Array.isArray(acl) ) { if(acl.indexOf('_call')===-1) { acl.push('_call'); } };
+                        
                         //this.selfs[prefix + ip] = o;
                     } catch (e) {
                         console.log("Kaboom! ", e);
