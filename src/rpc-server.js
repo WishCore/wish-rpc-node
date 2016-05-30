@@ -41,8 +41,8 @@ function RPC(methods) {
     this.methods = {};
     //this.selfs = {};
     this.requests = {};
-    // counting id for rpc invoke function
-    this.invokeId = 0;
+    this.requestId = 0; // internal request id counter
+    this.invokeId = 0; // counting id for rpc invoke function
     this.acl;
     if(methods) {
         this.insertMethods(methods);
@@ -235,6 +235,7 @@ RPC.prototype.emit = function(client, event, payload) {
 
 RPC.prototype.invokeRaw = function(msg, respond, context) {
     var self = this;
+    var requestId = ++this.requestId;
 
     var acl = function (resource, permission, cb) {
         //console.log("ACL check on", arguments);
@@ -262,11 +263,11 @@ RPC.prototype.invokeRaw = function(msg, respond, context) {
     } else {
         // this is a regular rpc request
         var reqCtx = { 
-            id: msg.id, 
+            id: msg.id,
             end: null,
             acl: acl
         };
-        this.requests[msg.id] = reqCtx;
+        this.requests[requestId] = reqCtx;
 
         // call the actual method
         try {
@@ -275,39 +276,41 @@ RPC.prototype.invokeRaw = function(msg, respond, context) {
                 { args: msg.args },
                 { 
                     send: function(data) {
-                        if(!self.requests[msg.id]) {
+                        if(!self.requests[requestId]) {
                             throw new Error('No such request is active.');
                         }
                         self.emit('ended', msg.id);
 
-                        if(self.requests[msg.id]) {
-                            delete self.requests[msg.id];
+                        if(self.requests[requestId]) {
+                            delete self.requests[requestId];
                         } else {
                             console.log("deleting non-existing request:", msg.op, msg);
                         }
                         respond({ ack: msg.id, data: data }); 
                     },
                     emit: function(data) {
-                        if(!self.requests[msg.id]) {
+                        if(!self.requests[requestId]) {
                             console.log("emitting on nonexisting:", msg.id, self.requests);
                             throw new Error('No such request is active. '+msg.id);
                         }
                         respond({ sig: msg.id, data: data }); 
                     },
                     error: function(data) {
-                        if(!self.requests[msg.id]) {
+                        if(!self.requests[requestId]) {
                             throw new Error('No such request is active.');
                         }
                         self.emit('ended', msg.id);
-                        delete self.requests[msg.id];
+                        delete self.requests[requestId];
                         respond({ err: msg.id, data: data }); 
                     },
                     close: function(data) {
-                        if(!self.requests[msg.id]) {
-                            throw new Error('No such request is active.');
+                        if(!self.requests[requestId]) {
+                            console.log('No such request is active.')
+                            //throw new Error('No such request is active.');
+                            return false;
                         }
                         self.emit('ended', msg.id);
-                        delete self.requests[msg.id];
+                        delete self.requests[requestId];
                         respond({ end: msg.id }); 
                     }
                 },
