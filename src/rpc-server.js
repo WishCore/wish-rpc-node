@@ -251,7 +251,7 @@ RPC.prototype.invokeRaw = function(msg, respond, context) {
             acl: acl
         };
         this.methods[msg.op].call(
-            null,
+            reqCtx,
             { args: msg.args },
             {
                 send: function() { console.log("Trying to send response to event ("+msg.op+"). Dropping."); },
@@ -305,7 +305,7 @@ RPC.prototype.invokeRaw = function(msg, respond, context) {
                     },
                     close: function(data) {
                         if(!self.requests[requestId]) {
-                            console.log('No such request is active.')
+                            console.log('No such request is active.');
                             //throw new Error('No such request is active.');
                             return false;
                         }
