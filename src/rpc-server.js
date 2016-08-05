@@ -271,7 +271,7 @@ RPC.prototype.invokeRaw = function(msg, respond, context) {
         }
         //console.log("ACL check on", arguments);
         self.acl(resource, permission, context, function (err, allowed, permissions) {
-            //console.log("   rpc-server: permissions:", permissions);
+            //console.log("   rpc-server: permissions:", context, resource, permissions);
             cb(err, allowed, permissions);
         });
     };
