@@ -83,8 +83,21 @@ RPC.prototype.addMethods = function(path, o) {
                         this.methods[prefix + ip] = o[i];
 
                         var acl = this.modules[prefix + ip].acl;
-                        if( acl === true ) { this.modules[prefix + ip].acl = ['_call']; }
-                        if( Array.isArray(acl) ) { if(acl.indexOf('_call')===-1) { acl.push('_call'); } };
+                        var public = this.modules[prefix + ip].public;
+                        
+                        // public property is deprecated, use acl = false instead
+                        if(public) { delete this.modules[prefix + ip]['public']; }
+                        
+                        if (acl === false || public === true) {
+                            // access control is explicitly disabled, allow access
+                            this.modules[prefix + ip].acl = false;
+                            console.log("This is public:", prefix+ip);
+                        } else if( acl === true || typeof acl === 'undefined' ) {
+                            this.modules[prefix + ip].acl = ['_call']; 
+                            console.log("This requires permission:", prefix+ip);
+                        }
+
+                        if( Array.isArray(acl) ) { if(acl.indexOf('_call')===-1) { this.modules[prefix + ip].acl.push('_call'); } };
                         
                         //this.selfs[prefix + ip] = o;
                     } catch (e) {
@@ -143,12 +156,26 @@ RPC.prototype.listMethods = function(args, context, cb) {
             }
             
             //console.log("acl--:", i, self.modules[i].acl, context);
-            self.acl(i, self.modules[i].acl, context, function(err, allowed, permissions) {
-                if(err || !allowed) { checkAcl(); return; }
-                //console.log("added:", i);
-                result[i] = copy(self.modules[i], filter);
+            try {
+                if(self.modules[i].acl === false) {
+                    // access control is explicitly disabled, allow access
+                    result[i] = copy(self.modules[i], filter);
+                    return checkAcl();
+                } else if (Array.isArray(self.modules[i].acl)) {
+                    self.acl(i, self.modules[i].acl, context, function(err, allowed, permissions) {
+                        if(err || !allowed) { checkAcl(); return; }
+                        //console.log("added:", i);
+                        result[i] = copy(self.modules[i], filter);
+                        checkAcl();
+                    });
+                } else {
+                    // not false or array: deny
+                    checkAcl();
+                }
+            } catch(e) {
+                console.log("rpc-server.js/listMethods, failed acl check", e, e.stack);
                 checkAcl();
-            });
+            }
         }
 
         checkAcl();
@@ -189,28 +216,29 @@ RPC.prototype.parse = function(msg, respond, context) {
             // service not found
             respond({ack: msg.id, err: msg.id, data: { code: 300, msg: "No method found: "+msg.op } });
             return;
-        } else if ( typeof this.acl === 'function' && !this.modules[msg.op].public ) {
-            this.acl(this.modules[msg.op].fullname, this.modules[msg.op].acl, context, function(err, allowed, permissions) {
-                if(err) {
-                    return respond({ack: msg.id, err: msg.id, data: { code: 301, msg: "Access control error: "+msg.op } });
-                } else if (!allowed) {
-                    return respond({ack: msg.id, err: msg.id, data: { code: 302, msg: "Permission denied: "+msg.op } });
-                }
-
-                context.permissions = {};
-                if(permissions) {
-                    for(var i in permissions) {
-                        context.permissions[permissions[i]] = true;
+        } else if ( typeof this.acl === 'function' ) {
+            if( this.modules[msg.op].acl === false ) {
+                // no access control just invoke
+                context.acl = {};
+                self.invokeRaw(msg, respond, context);
+            } else {
+                this.acl(this.modules[msg.op].fullname, this.modules[msg.op].acl, context, function(err, allowed, permissions) {
+                    if(err) {
+                        return respond({ack: msg.id, err: msg.id, data: { code: 301, msg: "Access control error: "+msg.op } });
+                    } else if (!allowed) {
+                        return respond({ack: msg.id, err: msg.id, data: { code: 302, msg: "Permission denied: "+msg.op } });
                     }
-                }
-                
-                process.nextTick(function() { self.invokeRaw(msg, respond, context); });
-            });
-            return;
-        } else if (this.modules[msg.op].public) {
-            // no access control, just invoke
-            context.acl = {};
-            self.invokeRaw(msg, respond, context);
+
+                    context.permissions = {};
+                    if(permissions) {
+                        for(var i in permissions) {
+                            context.permissions[permissions[i]] = true;
+                        }
+                    }
+
+                    process.nextTick(function() { self.invokeRaw(msg, respond, context); });
+                });
+            }
         } else {
             // no access control, just invoke
             self.invokeRaw(msg, respond, context);
@@ -238,8 +266,11 @@ RPC.prototype.invokeRaw = function(msg, respond, context) {
     var requestId = ++this.requestId;
 
     var acl = function (resource, permission, cb) {
+        if(!Array.isArray(permission)) {
+            permission = [permission];
+        }
         //console.log("ACL check on", arguments);
-        self.acl(resource, [permission], context, function (err, allowed, permissions) {
+        self.acl(resource, permission, context, function (err, allowed, permissions) {
             //console.log("   rpc-server: permissions:", permissions);
             cb(err, allowed, permissions);
         });
