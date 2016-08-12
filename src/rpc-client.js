@@ -25,21 +25,20 @@ Client.prototype.destroy = function() {
 
 Client.prototype.messageReceived = function(msg, next) {
     //console.log("RpcClient received message", msg);
-    var end = !!(msg.err || msg.ack || msg.end);
+    var end = !!(msg.err || msg.ack || msg.fin);
     
-    var id = msg.ack || msg.err || msg.sig || msg.end;
+    var id = msg.ack || msg.err || msg.sig || msg.fin;
     
     var request = this.requests[id];
 
     if(request && typeof request.cb === 'function') {
         var err;
-        if(msg.end) {
-            err = true;
-            msg.data = { str: 'Request terminated by remote host.', code: 101 };
+        if(msg.fin) {
+            // This request closed gracefully
         } else {
             err = !!msg.err ? msg.data : null;
+            request.cb.call(request.context, err, msg.data, end);
         }
-        request.cb.call(request.context, err, msg.data, end);
     }
     if(end) {
         //console.log("deleting this request", id);

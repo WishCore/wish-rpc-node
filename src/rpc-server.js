@@ -94,7 +94,7 @@ RPC.prototype.addMethods = function(path, o) {
                             console.log("This is public:", prefix+ip);
                         } else if( acl === true || typeof acl === 'undefined' ) {
                             this.modules[prefix + ip].acl = ['_call']; 
-                            console.log("This requires permission:", prefix+ip);
+                            //console.log("This requires permission:", prefix+ip);
                         }
 
                         if( Array.isArray(acl) ) { if(acl.indexOf('_call')===-1) { this.modules[prefix + ip].acl.push('_call'); } };
@@ -193,7 +193,18 @@ RPC.prototype.parse = function(msg, respond, context) {
     try {
         if( msg.end ) {
             var id = msg.end;
-            //console.log("end this request:", this.requests[id], id);
+            console.log("end this request:", this.requests[id] ? this.requests[id] : this.requests, id);
+            for(var i in this.requests) {
+                if(this.requests[i].id === id) {
+                    if (typeof this.requests[i].end === 'function') {
+                        this.requests[i].end();
+                    }
+                    respond({ fin: id });
+                    delete this.requests[i];
+                    self.emit('ended', id);
+                    return;
+                }
+            }
             if( !this.requests[id] ) {
                 return console.log("No such request...", id);
             }
@@ -285,10 +296,10 @@ RPC.prototype.invokeRaw = function(msg, respond, context) {
             reqCtx,
             { args: msg.args },
             {
-                send: function() { console.log("Trying to send response to event ("+msg.op+"). Dropping."); },
-                emit: function() { console.log("Trying to emit response to event ("+msg.op+"). Dropping."); },
-                error: function() { console.log("Trying to respond with error to event ("+msg.op+"). Dropping."); },
-                close: function() { console.log("Trying to close event ("+msg.op+"). Dropping."); }
+                send: function() { debug("Trying to send response to event ("+msg.op+"). Dropping."); },
+                emit: function() { debug("Trying to emit response to event ("+msg.op+"). Dropping."); },
+                error: function() { debug("Trying to respond with error to event ("+msg.op+"). Dropping."); },
+                close: function() { debug("Trying to close event ("+msg.op+"). Dropping."); }
             },
             context);
     } else {
