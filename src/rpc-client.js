@@ -36,8 +36,13 @@ Client.prototype.messageReceived = function(msg, next) {
         if(msg.fin) {
             // This request closed gracefully
         } else {
-            err = !!msg.err ? msg.data : null;
-            request.cb.call(request.context, err, msg.data, end);
+            if(request.canceled) {
+                console.log("This request is canceled. Not calling the callback.");
+            } else {
+                // all is good, call the callback function
+                err = !!msg.err ? msg.data : null;
+                request.cb.call(request.context, err, msg.data, end);
+            }
         }
     }
     if(end) {
@@ -75,11 +80,16 @@ Client.prototype.request = function(op, args, stream, cb) {
             cb: cb, 
             context: { 
                 id: msg.id, 
-                cancel: function() { 
-                    setTimeout(function() {
-                        console.log("timeout", msg.id, self.requests[msg.id]);
-                    }, 500);
-                    self.write({end: msg.id}); 
+                cancel: function() {
+                    setTimeout( (function(id) {
+                        return function() {
+                            if(self.requests[id]) {
+                                console.log("rpc-client.js: timeout, the request has not been removed while it was canceled", id, self.requests[id]);
+                            }
+                        };
+                    })(msg.id), 1500);
+                    self.requests[msg.id].canceled = true;
+                    self.write({end: msg.id});
                 }
             }
         };

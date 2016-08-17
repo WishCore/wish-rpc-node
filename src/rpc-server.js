@@ -53,9 +53,12 @@ util.inherits(RPC, EventEmitter);
 
 RPC.prototype.destroy = function() {
     for(var i in this.requests) {
-        if (typeof this.requests[i].end === 'function') {
-            this.requests[i].end();
+        for(var j in this.requests[i]) {
+            if (typeof this.requests[i][j].end === 'function') {
+                this.requests[i][j].end();
+            }
         }
+        delete this.requests[i];
     }
 };
 
@@ -188,32 +191,57 @@ RPC.prototype.listMethods = function(args, context, cb) {
     }
 };
 
-RPC.prototype.parse = function(msg, respond, context) {
+RPC.prototype.clientOffline = function(clientId) {
+    for(var i in this.requests[clientId]) {
+        if (typeof this.requests[clientId][i].end === 'function') {
+            this.requests[clientId][i].end();
+        }
+        //console.log("Ended due to client offline:", this.requests[clientId][i]);
+        delete this.requests[clientId][i];
+    }
+};
+
+RPC.prototype.closeAll = function() {
+    for(var i in this.requests) {
+        for(var j in this.requests[i]) {
+            if (typeof this.requests[i][j].end === 'function') {
+                this.requests[i][j].end();
+            }
+            //console.log("Ended due to client offline:", this.requests[i][j]);
+            delete this.requests[i][j];
+        }
+    }
+};
+
+RPC.prototype.parse = function(msg, respond, context, clientId) {
     var self = this;
+
+    if(!clientId || typeof clientId !== 'string') {
+        //console.log("Got RPC request from unspecified client, setting clientId to __none.");
+        clientId = '__none';
+    }
+    
     try {
         if( msg.end ) {
             var id = msg.end;
-            console.log("end this request:", this.requests[id] ? this.requests[id] : this.requests, id);
-            for(var i in this.requests) {
-                if(this.requests[i].id === id) {
-                    if (typeof this.requests[i].end === 'function') {
-                        this.requests[i].end();
-                    }
-                    respond({ fin: id });
-                    delete this.requests[i];
-                    self.emit('ended', id);
-                    return;
+            //console.log("end this request:", clientId, id, this.requests[clientId] ? this.requests[clientId][id] : this.requests);
+            
+            if(this.requests[clientId] && this.requests[clientId][id]) {
+                if (typeof this.requests[clientId][id].end === 'function') {
+                    this.requests[clientId][id].end();
                 }
+                console.log("request to end", id);
+                respond({ fin: id });
+                delete this.requests[clientId][id];
+                self.emit('ended', id);
+                return;
             }
-            if( !this.requests[id] ) {
-                return console.log("No such request...", id);
+            if( !this.requests[clientId][id] ) {
+                return; // console.log("No such request...", id, clientId, new Error().stack, this.requests[clientId], this.requests);
             }
-            if (typeof this.requests[id].end === 'function') {
+            if (typeof this.requests[clientId][id].end === 'function') {
                 this.requests[id].end();
             }
-            respond({ end: id });
-            delete this.requests[id];
-            self.emit('ended', id);
             return;
         }
         
@@ -231,7 +259,7 @@ RPC.prototype.parse = function(msg, respond, context) {
             if( this.modules[msg.op].acl === false ) {
                 // no access control just invoke
                 context.acl = {};
-                self.invokeRaw(msg, respond, context);
+                self.invokeRaw(msg, respond, context, clientId);
             } else {
                 this.acl(this.modules[msg.op].fullname, this.modules[msg.op].acl, context, function(err, allowed, permissions) {
                     if(err) {
@@ -247,12 +275,12 @@ RPC.prototype.parse = function(msg, respond, context) {
                         }
                     }
 
-                    process.nextTick(function() { self.invokeRaw(msg, respond, context); });
+                    process.nextTick(function() { self.invokeRaw(msg, respond, context, clientId); });
                 });
             }
         } else {
             // no access control, just invoke
-            self.invokeRaw(msg, respond, context);
+            self.invokeRaw(msg, respond, context, clientId);
         }
     } catch(e) {
         debug("Dynamic RPC failed to execute ", msg.op, e, e.stack);
@@ -272,9 +300,14 @@ RPC.prototype.emit = function(client, event, payload) {
 };
 */
 
-RPC.prototype.invokeRaw = function(msg, respond, context) {
+RPC.prototype.invokeRaw = function(msg, respond, context, clientId) {
     var self = this;
     var requestId = ++this.requestId;
+    
+    if(!clientId || typeof clientId !== 'string') {
+        console.log("rpc-server.js/invokeRaw: Got RPC request from unspecified client, setting clientId to __none.", clientId, new Error().stack);
+        clientId = '__none';
+    }
 
     var acl = function (resource, permission, cb) {
         if(!Array.isArray(permission)) {
@@ -306,59 +339,65 @@ RPC.prototype.invokeRaw = function(msg, respond, context) {
         // this is a regular rpc request
         var reqCtx = { 
             id: msg.id,
+            op: msg.op,
+            args: msg.args,
             end: null,
             acl: acl
         };
-        this.requests[requestId] = reqCtx;
-
+        
+        if(!this.requests[clientId]) { this.requests[clientId] = {}; }
+        this.requests[clientId][msg.id] = reqCtx;
+        
         // call the actual method
         try {
             this.methods[msg.op].call(
                 reqCtx,
                 { args: msg.args },
-                { 
+                {
                     send: function(data) {
-                        if(!self.requests[requestId]) {
-                            throw new Error('No such request is active.');
+                        if(!self.requests[clientId][msg.id]) {
+                            //console.log('No such request is active.', clientId, msg.id, self.requests, new Error().stack);
+                            //throw new Error('No such request is active.');
                         }
                         self.emit('ended', msg.id);
 
-                        if(self.requests[requestId]) {
-                            delete self.requests[requestId];
+                        if(self.requests[clientId][msg.id]) {
+                            delete self.requests[clientId][msg.id];
                         } else {
                             console.log("deleting non-existing request:", msg.op, msg);
                         }
                         respond({ ack: msg.id, data: data }); 
                     },
                     emit: function(data) {
-                        if(!self.requests[requestId]) {
-                            console.log("emitting on nonexisting:", msg.id, self.requests);
+                        if(!self.requests[clientId][msg.id]) {
+                            console.log("emitting on nonexisting:", msg.id, self.requests[clientId], new Error().stack);
                             throw new Error('No such request is active. '+msg.id);
                         }
                         respond({ sig: msg.id, data: data }); 
                     },
                     error: function(data) {
-                        if(!self.requests[requestId]) {
+                        if(!self.requests[clientId][msg.id]) {
                             throw new Error('No such request is active.');
                         }
                         self.emit('ended', msg.id);
-                        delete self.requests[requestId];
+                        delete self.requests[clientId][msg.id];
                         respond({ err: msg.id, data: data }); 
                     },
                     close: function(data) {
-                        if(!self.requests[requestId]) {
+                        if(!self.requests[clientId][msg.id]) {
                             console.log('No such request is active.');
                             //throw new Error('No such request is active.');
                             return false;
                         }
                         self.emit('ended', msg.id);
-                        delete self.requests[requestId];
-                        respond({ end: msg.id }); 
+                        delete self.requests[clientId][msg.id];
+                        respond({ fin: msg.id }); 
                     }
                 },
                 context);
         } catch(e) {
             console.log("Calling the method in RPC failed:", msg.op, msg.args, e.stack);
+            delete self.requests[clientId][msg.id];
             respond({ err: msg.id, data: { msg: 'rpc failed during execution of '+msg.op, code: 578 } });
         }
     }
@@ -394,7 +433,7 @@ RPC.prototype.invoke = function(op, args, stream, cb) {
         });
     };
     
-    this.parse(msg, response, context);
+    this.parse(msg, response, context, '__invoke');
 };
 
 module.exports = {
