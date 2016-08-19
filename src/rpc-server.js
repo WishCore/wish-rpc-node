@@ -94,7 +94,7 @@ RPC.prototype.addMethods = function(path, o) {
                         if (acl === false || public === true) {
                             // access control is explicitly disabled, allow access
                             this.modules[prefix + ip].acl = false;
-                            console.log("This is public:", prefix+ip);
+                            //console.log("This is public:", prefix+ip);
                         } else if( acl === true || typeof acl === 'undefined' ) {
                             this.modules[prefix + ip].acl = ['_call']; 
                             //console.log("This requires permission:", prefix+ip);
