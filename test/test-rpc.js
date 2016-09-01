@@ -1,4 +1,4 @@
-var Rpc = require('../src/rpc.js').RPC;
+var Server = require('../src/index.js').Server;
 var assert = require('assert');
 
 describe('RPC test', function () {
@@ -6,7 +6,7 @@ describe('RPC test', function () {
     var rpc;
 
     before(function (done) {
-        rpc = new Rpc();
+        rpc = new Server();
         rpc.insertMethods({
             _fwupdate: {},
             fwupdate: {

@@ -1,4 +1,4 @@
-var Rpc = require('../src/rpc.js').RPC;
+var Server = require('../src/index.js').Server;
 var assert = require('assert');
 
 describe('RPC Access Control', function () {
@@ -6,7 +6,7 @@ describe('RPC Access Control', function () {
     var rpc;
 
     before(function (done) {
-        rpc = new Rpc();
+        rpc = new Server();
         
         rpc.insertMethods({
             _fwupdate: {},
@@ -16,11 +16,11 @@ describe('RPC Access Control', function () {
                     res.send('hello '+ req.args[0]);
                 }
             },
-            _login: {doc: 'Login to service'},
+            _login: {doc: 'Login to service' },
             login: function (req, res) {
                 res.send('hello world');
             },
-            _logout: { doc: 'Logout from service', acl: { user: true, advanced: 'string' } },
+            _logout: { doc: 'Logout from service' },
             logout: function (req, res, context) {
                 //console.log("Logging out with context:", context);
                 if(context.permissions.user) {

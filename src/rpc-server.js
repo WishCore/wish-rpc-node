@@ -346,6 +346,14 @@ RPC.prototype.invokeRaw = function(msg, respond, context, clientId) {
         };
         
         if(!this.requests[clientId]) { this.requests[clientId] = {}; }
+        if(this.requests[clientId][msg.id]) {
+            console.log("There is already a request by that id, we'll kill it off!");
+            if(typeof this.requests[clientId][msg.id].end === 'function') {
+                this.requests[clientId][msg.id].end();
+            }
+            delete this.requests[clientId][msg.id];
+            console.log("Removed old request by same id from same client...");
+        }
         this.requests[clientId][msg.id] = reqCtx;
         
         // call the actual method
@@ -355,40 +363,28 @@ RPC.prototype.invokeRaw = function(msg, respond, context, clientId) {
                 { args: msg.args },
                 {
                     send: function(data) {
-                        if(!self.requests[clientId][msg.id]) {
-                            //console.log('No such request is active.', clientId, msg.id, self.requests, new Error().stack);
-                            //throw new Error('No such request is active.');
-                        }
+                        if(typeof reqCtx.end === 'function') { reqCtx.end(); }
                         self.emit('ended', msg.id);
 
                         if(self.requests[clientId][msg.id]) {
                             delete self.requests[clientId][msg.id];
-                        } else {
-                            console.log("deleting non-existing request:", msg.op, msg);
                         }
-                        respond({ ack: msg.id, data: data }); 
+                        respond({ ack: msg.id, data: data });
                     },
                     emit: function(data) {
                         if(!self.requests[clientId][msg.id]) {
-                            console.log("emitting on nonexisting:", msg.id, self.requests[clientId], new Error().stack);
-                            throw new Error('No such request is active. '+msg.id);
+                            if(typeof reqCtx.end === 'function') { reqCtx.end(); }
                         }
                         respond({ sig: msg.id, data: data }); 
                     },
                     error: function(data) {
-                        if(!self.requests[clientId][msg.id]) {
-                            throw new Error('No such request is active.');
-                        }
+                        if(typeof reqCtx.end === 'function') { reqCtx.end(); }
                         self.emit('ended', msg.id);
                         delete self.requests[clientId][msg.id];
                         respond({ err: msg.id, data: data }); 
                     },
                     close: function(data) {
-                        if(!self.requests[clientId][msg.id]) {
-                            console.log('No such request is active.');
-                            //throw new Error('No such request is active.');
-                            return false;
-                        }
+                        if(typeof reqCtx.end === 'function') { reqCtx.end(); }
                         self.emit('ended', msg.id);
                         delete self.requests[clientId][msg.id];
                         respond({ fin: msg.id }); 

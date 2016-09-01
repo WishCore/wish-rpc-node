@@ -1,5 +1,5 @@
-var Rpc = require('../src/rpc.js').RPC;
-var Client = require('../src/rpc-client.js').Client;
+var Server = require('../src/index.js').Server;
+var Client = require('../src/index.js').Client;
 var assert = require('assert');
 var stream = require('stream');
 var fs = require('fs');
@@ -10,7 +10,7 @@ describe('RPC Stream Control', function () {
     var rpc;
 
     before(function (done) {
-        rpc = new Rpc();
+        rpc = new Server();
 
         var signaler = new EventEmitter();
         setInterval(function() { signaler.emit('online', { luid: 'l1', ruid: 'r4' }); }, 50);
@@ -90,7 +90,7 @@ describe('RPC Stream Control', function () {
 
     it('should be ended by remote host', function(done) {
         var reqid = client.request('event.identities', [], function(err, data, end) {
-            //console.log("event.identities", err, data, end);
+            console.log("event.identities", err, data, end);
             if(end) {
                 done();
             }
