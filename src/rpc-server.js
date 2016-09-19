@@ -347,7 +347,7 @@ RPC.prototype.invokeRaw = function(msg, respond, context, clientId) {
         
         if(!this.requests[clientId]) { this.requests[clientId] = {}; }
         if(this.requests[clientId][msg.id]) {
-            console.log("There is already a request by that id, we'll kill it off!");
+            console.log("Serious warning. There is already a request by that id, we'll kill it off! This session is likely not clean. clientId:", clientId, 'msg', msg);
             if(typeof this.requests[clientId][msg.id].end === 'function') {
                 this.requests[clientId][msg.id].end();
             }
