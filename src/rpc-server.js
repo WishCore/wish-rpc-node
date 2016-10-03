@@ -222,6 +222,14 @@ RPC.prototype.parse = function(msg, respond, context, clientId) {
     }
     
     try {
+        if( msg.sig ) {
+            //console.log("we got here...");
+            if(this.requests[clientId] && this.requests[clientId][msg.sig]) {
+                //console.log("and here...");
+                self.invokeRaw(msg, respond, this.requests[clientId][msg.sig].context, clientId);
+            }            
+            return;
+        }
         if( msg.end ) {
             var id = msg.end;
             //console.log("end this request:", clientId, id, this.requests[clientId] ? this.requests[clientId][id] : this.requests);
@@ -320,6 +328,54 @@ RPC.prototype.invokeRaw = function(msg, respond, context, clientId) {
         });
     };
 
+    if(msg.sig) {
+         // we got a sig from client... neat, must be streaming!
+        var ctx = this.requests[clientId][msg.sig];
+
+        // call the actual method
+        try {
+            this.methods[ctx.op].call(
+                this.requests[clientId][msg.sig],
+                msg.data,
+                {
+                    send: function(data) {
+                        if(typeof reqCtx.end === 'function') { reqCtx.end(); }
+                        self.emit('ended', msg.sig);
+
+                        if(self.requests[clientId][msg.sig]) {
+                            delete self.requests[clientId][msg.sig];
+                        }
+                        respond({ ack: msg.sig, data: data });
+                    },
+                    emit: function(data) {
+                        if(!self.requests[clientId][msg.sig]) {
+                            if(typeof reqCtx.end === 'function') { reqCtx.end(); }
+                        }
+                        return respond({ sig: msg.sig, data: data }); 
+                    },
+                    error: function(data) {
+                        if(typeof reqCtx.end === 'function') { reqCtx.end(); }
+                        self.emit('ended', msg.sig);
+                        delete self.requests[clientId][msg.sig];
+                        respond({ err: msg.sig, data: data }); 
+                    },
+                    close: function(data) {
+                        if(typeof reqCtx.end === 'function') { reqCtx.end(); }
+                        self.emit('ended', msg.sig);
+                        delete self.requests[clientId][msg.sig];
+                        respond({ fin: msg.sig }); 
+                    }
+                },
+                context);
+        } catch(e) {
+            console.log("Calling the method in RPC failed:", msg.op, msg.args, e.stack);
+            delete self.requests[clientId][msg.sig];
+            respond({ err: msg.sig, data: { msg: 'rpc failed during execution of '+msg.op, code: 578 } });
+        }
+
+        return;
+    }
+
     if(typeof msg.id === 'undefined') {
         // this is an event
         var reqCtx = { 
@@ -341,13 +397,14 @@ RPC.prototype.invokeRaw = function(msg, respond, context, clientId) {
             id: msg.id,
             op: msg.op,
             args: msg.args,
+            context: context,
             end: null,
             acl: acl
         };
         
         if(!this.requests[clientId]) { this.requests[clientId] = {}; }
         if(this.requests[clientId][msg.id]) {
-            console.log("Serious warning. There is already a request by that id, we'll kill it off! This session is likely not clean. clientId:", clientId, 'msg', msg);
+            console.log("Serious warning. There is already a request by that id, we'll kill it off! This session is likely not clean. clientId:", clientId, 'msg', msg, 'stack trace:', new Error().stack);
             if(typeof this.requests[clientId][msg.id].end === 'function') {
                 this.requests[clientId][msg.id].end();
             }
@@ -375,7 +432,7 @@ RPC.prototype.invokeRaw = function(msg, respond, context, clientId) {
                         if(!self.requests[clientId][msg.id]) {
                             if(typeof reqCtx.end === 'function') { reqCtx.end(); }
                         }
-                        respond({ sig: msg.id, data: data }); 
+                        return respond({ sig: msg.id, data: data }); 
                     },
                     error: function(data) {
                         if(typeof reqCtx.end === 'function') { reqCtx.end(); }

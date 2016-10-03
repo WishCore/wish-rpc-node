@@ -1,10 +1,15 @@
 var EventEmitter = require('events').EventEmitter;
 var util = require('util');
 
-function Client(send) {
+function Client(send, opts) {
     this.write = send;
     this.id = 0;
     this.requests = {};
+    if(opts && opts.mtu) {
+        this.mtu = opts.mtu;
+    } else {
+        this.mtu = 65535;
+    }
     
     /*
     setTimeout(function() {
@@ -90,6 +95,9 @@ Client.prototype.request = function(op, args, stream, cb) {
                     })(msg.id), 1500);
                     self.requests[msg.id].canceled = true;
                     self.write({end: msg.id});
+                },
+                emit: function(data) {
+                    self.write({sig: msg.id, data: data});
                 }
             }
         };
