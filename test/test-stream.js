@@ -34,7 +34,7 @@ describe('RPC Stream Control', function () {
                     context.stream = duplex;
                     
                     res.emit({_readable: true});
-                    context.eof = 3;
+                    context.eof = 300;
                     context.offset = 0;
 
                     context.canSend = true;
@@ -50,11 +50,11 @@ describe('RPC Stream Control', function () {
                                 console.log("We have more data to send, but cant push it forward.");
                                 break;
                             }
-                            var chunk = duplex.read(183);
+                            var chunk = duplex.read(1536);
                             if (chunk === null) {
                                 break;
                             }
-                            console.log("sending chunk", typeof chunk, chunk, chunk.length);
+                            //console.log("sending chunk", typeof chunk, chunk, chunk.length);
                             context.canSend = res.emit({ offset: context.offset, payload: chunk});
                             context.offset += chunk.length;
                             context.eof--;
@@ -63,7 +63,7 @@ describe('RPC Stream Control', function () {
                                 break;
                             }
                             if (context.eof <= 0) {
-                                console.log("We have sent everything, we're done!");
+                                //console.log("We have sent everything, we're done!");
                                 res.send({ _end: true });
                                 break;
                             }
@@ -126,10 +126,9 @@ describe('RPC Stream Control', function () {
     });
 
 
-    it('should be ended by remote host', function(done) {
+    it('should stream data to a client file stream', function(done) {
         var state = 0;
-        var msg = '';
-        var reqid = client.request('stream', [], function(err, data, end) {
+        client.request('stream', [], function(err, data, end) {
             var self = this;
             //console.log("stream", err, data, end);
             
@@ -138,22 +137,37 @@ describe('RPC Stream Control', function () {
                     if(data._readable) {
                         //console.log("We got a stream response.");
                         state = 1;
+                        this.stream = new RpcClientStream();
+                        var out = fs.createWriteStream('./test-stream.data');
+                        out.on('close', function() { done(); });
+                        this.stream.pipe(out);
+                        this.len = 0;
                     }
                     break;
                 case 1:
-                    console.log("reading a stream...", data, 'context:', this);
-                    setTimeout(function() { self.emit({_ack: data.offset}); }, 89);
+                    //console.log("reading a stream...", data, 'context:', this);
+                    setTimeout(function() { self.emit({_ack: data.offset}); }, 189);
                     if(data.payload) {
-                        console.log("got more payload", data.payload.length);
-                        msg += data.payload.toString();
+                        this.len += data.payload.length;
+                        //console.log("got more payload", data.payload, data.payload.length, this.len);
+                        //msg += data.payload.toString();
+                        var canPush = this.stream.push(data.payload);
+                        if(!canPush) {
+                            console.log("we can't push more to the read stream. STOP!");
+                        } else {
+                            //console.log('read stream can take more data. Pushed:', data.payload.length, 'bytes');
+                        }
+                        return canPush;
                     }
                     break;
             }
             
             
             if(end) {
-                console.log("Here is everythig:\n"+ msg, msg.length);
-                done();
+                console.log("Done. Saved to test-stream.data. We got this much data:\n", err, data, this.len);
+                this.stream.push(null);
+                this.stream.emit('readable');
+                //done();
             }
             return true;
         });
@@ -177,36 +191,53 @@ util.inherits(RpcStream, Duplex);
 
 var len = 0;
 
-RpcStream.prototype._read = function readBytes(n) {
-    console.log("reading data, ", n, 'bytes');
+RpcStream.prototype._read = function(n) {
+    //console.log("reading data, ", n, 'bytes');
     var self = this;
     var curlen = 0;
     while (true) {
         var chunk = new Buffer(new Date().toString()+'\n');
         len += chunk.length;
         curlen += chunk.length;
-        console.log("got a chunk", chunk.length, len);
-        if (len > 256 * 100) {
-            console.log("We have pushed everything to read buffers:", len, 'bytes');
+        //console.log("got a chunk", chunk.length, len);
+        if (len > 256 * 1000) {
+            //console.log("We have pushed everything to read buffers:", len, 'bytes');
             self.push(null);
             break;
         }
         if (!self.push(chunk) || curlen > 256 * 4) {
-            console.log("stop writing to read buffer");
+            //console.log("stop writing to read buffer");
             break; // false from push, stop reading
         }
     }
 };
 
 /* for write stream just ouptut to stdout */
-RpcStream.prototype._write =
-        function (chunk, enc, cb) {
-            console.log('write: ', chunk.toString());
-            cb();
-        };
+RpcStream.prototype._write = function (chunk, enc, cb) {
+    console.log('write: ', chunk.toString());
+    cb();
+};
 
 /*
  duplex.write('Hello \n');
  duplex.write('World');
 duplex.end();
 */
+
+
+/**
+ * Duplex stream which:
+ *  - generates current time every sec for rstream
+ *  - outputs the write stream to stdout
+ *
+ * Stop the read stream by calling stopTimer
+ */
+function RpcClientStream(options) {
+    Duplex.call(this, options); // init
+}
+
+util.inherits(RpcClientStream, Duplex);
+
+RpcClientStream.prototype._read = function(n) {
+    //console.log("ClientStream wanting ", n, 'bytes'); //, this._readableState);
+};
