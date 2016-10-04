@@ -19,58 +19,63 @@ describe('RPC Stream Control', function () {
         rpc.insertMethods({
             _stream: {},
             stream: function(req, res, context) {
-                if(context.stream) {
+                if (context.stream) {
                     // stream data
                     //console.log("It seems there is an open stream already!", req);
                     var duplex = context.stream;
                     if(req._ack === 0 || req._ack) {
-                        //console.log("OOoh and an ack it is!");
+                        //console.log("OOoh and an ack it is!", req._ack);
                         context.canSend = true;
-                        duplex.emit('readable');
+                        if(context.emitReadable) {
+                            console.log("setting readable on nextTick.");
+                            process.nextTick(function() { duplex.emit('readable'); });
+                            context.emitReadable = false;
+                        }
                     }
                 } else {
+                    //console.log("Open stream from server.");
                     // open new stream
                     var duplex = new RpcStream();
+                    //var duplex = fs.createReadStream('/home/akaustel/posinstra-andre-2012-01-12.tar.gz');
                     context.stream = duplex;
                     
                     res.emit({_readable: true});
-                    context.eof = 300;
                     context.offset = 0;
-
                     context.canSend = true;
 
                     duplex.on('readable', function () {
-                        if (context.eof <= 0) {
-                            duplex.read(16*1024);
-                            return;
-                        }
-                        
+                        //console.log("source stream readable.", context.offset);
                         while ( true ) {
                             if(!context.canSend) {
-                                console.log("We have more data to send, but cant push it forward.");
+                                //console.log("We have more data to send, but cant push it forward. Waiting for ack.");
                                 break;
                             }
                             var chunk = duplex.read(1536);
                             if (chunk === null) {
+                                //console.log("no more data to send");
                                 break;
+                            } else {
+                                //console.log("much more data to send", chunk.length);
                             }
-                            //console.log("sending chunk", typeof chunk, chunk, chunk.length);
+                            //console.log("sending chunk", typeof chunk, chunk, chunk.length, context.offset);
                             context.canSend = res.emit({ offset: context.offset, payload: chunk});
                             context.offset += chunk.length;
-                            context.eof--;
+                            //context.eof--;
                             if (!context.canSend) {
-                                console.log("We cant send more... waiting.");
+                                //console.log("We cant send more... waiting.");
+                                context.emitReadable = true;
                                 break;
                             }
-                            if (context.eof <= 0) {
+                            /*if (context.eof <= 0) {
                                 //console.log("We have sent everything, we're done!");
                                 res.send({ _end: true });
                                 break;
-                            }
+                            }*/
                         }
                     });
                     
                     duplex.on('end', function() {
+                        //console.log("End. No more readable signals needed....");
                         res.send({ _end: true });
                     });
                 }
@@ -81,44 +86,41 @@ describe('RPC Stream Control', function () {
         var serverWriteBuffer = [];
 
         var bufferedServerWrite = function(data) { 
-            //console.log("server: buffered write:", data);
-            
-            if(serverWriteBuffer.length > 3) {
-                //console.log("Write buffer is full.");
-                return false;
-            }
-            
+            //console.log("serverWrite", data);
             serverWriteBuffer.push(data);
-
-            var pushed = client.messageReceived(data, function() {});
-            
-            if(true || pushed) {
-                serverWriteBuffer.shift();
-            } else {
-                console.log("data not accepted by client:", typeof pushed, pushed);
-            }
-            
-            return true;
+            return serverWriteBuffer.length < 500;
         };
+
+        setInterval(function() {
+            var it = 0;
+
+            while(serverWriteBuffer.length > 0) {
+                //console.log("serverWrite iterations", ++it, data);
+                var pushed = client.messageReceived(serverWriteBuffer[0], function() {});
+
+                //if(pushed) {
+                    serverWriteBuffer.shift();
+                //} else {
+                    //console.log("data not accepted by client:", typeof pushed, pushed);
+                //    break;
+                //}
+            }
+        }, 15);
+        
 
         var bufferedClientWrite = function(data) { 
-            //console.log("client: buffered write:", data);
-            
-            if(clientWriteBuffer.length > 3) {
-                console.log("Write buffer is full.");
-                return false;
-            }
-            
+            //console.log("clientWrite", data);
             clientWriteBuffer.push(data);
-
-            var pushed = rpc.parse(clientWriteBuffer[0], bufferedServerWrite, {});
-            
-            clientWriteBuffer.shift();
-
-            //console.log("rpc.parse returned:", pushed);
-
-            return true;
+            return clientWriteBuffer.length < 500;
         };
+        
+        setInterval(function() {
+            while (clientWriteBuffer.length > 0) {
+                var pushed = rpc.parse(clientWriteBuffer[0], bufferedServerWrite, {});
+                //console.log("shifting clientWriteBuffer");
+                clientWriteBuffer.shift();
+            }
+        }, 15);
         
         client = new Client(bufferedClientWrite, { mtu: 128 });
         
@@ -127,7 +129,9 @@ describe('RPC Stream Control', function () {
 
 
     it('should stream data to a client file stream', function(done) {
+        this.timeout(200000);
         var state = 0;
+        var attached = false;
         client.request('stream', [], function(err, data, end) {
             var self = this;
             //console.log("stream", err, data, end);
@@ -142,19 +146,25 @@ describe('RPC Stream Control', function () {
                         out.on('close', function() { done(); });
                         this.stream.pipe(out);
                         this.len = 0;
+                        return true;
                     }
                     break;
                 case 1:
                     //console.log("reading a stream...", data, 'context:', this);
-                    setTimeout(function() { self.emit({_ack: data.offset}); }, 189);
                     if(data.payload) {
                         this.len += data.payload.length;
                         //console.log("got more payload", data.payload, data.payload.length, this.len);
                         //msg += data.payload.toString();
                         var canPush = this.stream.push(data.payload);
                         if(!canPush) {
-                            console.log("we can't push more to the read stream. STOP!");
+                            //console.log("we can't push more to the read stream. STOP!");
+                            //console.log('cant push state:', this.stream._readableState.reading);
+                            if(!attached) {
+                                this.stream.on('more', function() { self.emit({_ack: 9999 }); });
+                                attached = true;
+                            }
                         } else {
+                            self.emit({_ack: data.offset});
                             //console.log('read stream can take more data. Pushed:', data.payload.length, 'bytes');
                         }
                         return canPush;
@@ -194,20 +204,18 @@ var len = 0;
 RpcStream.prototype._read = function(n) {
     //console.log("reading data, ", n, 'bytes');
     var self = this;
-    var curlen = 0;
     while (true) {
         var chunk = new Buffer(new Date().toString()+'\n');
-        len += chunk.length;
-        curlen += chunk.length;
-        //console.log("got a chunk", chunk.length, len);
-        if (len > 256 * 1000) {
-            //console.log("We have pushed everything to read buffers:", len, 'bytes');
+        if (len > 256 * 1024) {
+            console.log("We have pushed everything to read buffers:", len, 'bytes');
             self.push(null);
             break;
         }
-        if (!self.push(chunk) || curlen > 256 * 4) {
-            //console.log("stop writing to read buffer");
-            break; // false from push, stop reading
+
+        len += chunk.length;
+        
+        if (!self.push(chunk)) {
+            break;
         }
     }
 };
@@ -217,12 +225,6 @@ RpcStream.prototype._write = function (chunk, enc, cb) {
     console.log('write: ', chunk.toString());
     cb();
 };
-
-/*
- duplex.write('Hello \n');
- duplex.write('World');
-duplex.end();
-*/
 
 
 /**
@@ -239,5 +241,11 @@ function RpcClientStream(options) {
 util.inherits(RpcClientStream, Duplex);
 
 RpcClientStream.prototype._read = function(n) {
-    //console.log("ClientStream wanting ", n, 'bytes'); //, this._readableState);
+    //console.log("in read reading: ", this._readableState.reading);
+    this.emit('more');
+};
+
+RpcClientStream.prototype._write = function (chunk, enc, cb) {
+    console.log('write: ', chunk.toString());
+    cb();
 };

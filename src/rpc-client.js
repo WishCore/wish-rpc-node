@@ -35,6 +35,7 @@ Client.prototype.messageReceived = function(msg, next) {
     var id = msg.ack || msg.err || msg.sig || msg.fin;
     
     var request = this.requests[id];
+    var retval;
 
     if(request && typeof request.cb === 'function') {
         var err;
@@ -46,7 +47,7 @@ Client.prototype.messageReceived = function(msg, next) {
             } else {
                 // all is good, call the callback function
                 err = !!msg.err ? msg.data : null;
-                request.cb.call(request.context, err, msg.data, end);
+                retval = request.cb.call(request.context, err, msg.data, end);
             }
         }
     }
@@ -55,6 +56,7 @@ Client.prototype.messageReceived = function(msg, next) {
         delete this.requests[id];
     }
     setTimeout(next, 250);
+    return retval;
 };
 
 Client.prototype.request = function(op, args, stream, cb) {
