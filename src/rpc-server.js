@@ -223,11 +223,9 @@ RPC.prototype.parse = function(msg, respond, context, clientId) {
     
     try {
         if( msg.sig ) {
-            //console.log("we got here...");
             if(this.requests[clientId] && this.requests[clientId][msg.sig]) {
-                //console.log("and here...");
                 self.invokeRaw(msg, respond, this.requests[clientId][msg.sig].context, clientId);
-            }            
+            }
             return;
         }
         if( msg.end ) {
@@ -331,7 +329,7 @@ RPC.prototype.invokeRaw = function(msg, respond, context, clientId) {
     if(msg.sig) {
          // we got a sig from client... neat, must be streaming!
         var ctx = this.requests[clientId][msg.sig];
-
+        
         // call the actual method
         try {
             this.methods[ctx.op].call(
@@ -339,7 +337,7 @@ RPC.prototype.invokeRaw = function(msg, respond, context, clientId) {
                 msg.data,
                 {
                     send: function(data) {
-                        if(typeof reqCtx.end === 'function') { reqCtx.end(); }
+                        if(typeof ctx.end === 'function') { ctx.end(); }
                         self.emit('ended', msg.sig);
 
                         if(self.requests[clientId][msg.sig]) {
@@ -349,18 +347,18 @@ RPC.prototype.invokeRaw = function(msg, respond, context, clientId) {
                     },
                     emit: function(data) {
                         if(!self.requests[clientId][msg.sig]) {
-                            if(typeof reqCtx.end === 'function') { reqCtx.end(); }
+                            if(typeof ctx.end === 'function') { ctx.end(); }
                         }
                         return respond({ sig: msg.sig, data: data }); 
                     },
                     error: function(data) {
-                        if(typeof reqCtx.end === 'function') { reqCtx.end(); }
+                        if(typeof ctx.end === 'function') { ctx.end(); }
                         self.emit('ended', msg.sig);
                         delete self.requests[clientId][msg.sig];
                         respond({ err: msg.sig, data: data }); 
                     },
                     close: function(data) {
-                        if(typeof reqCtx.end === 'function') { reqCtx.end(); }
+                        if(typeof ctx.end === 'function') { ctx.end(); }
                         self.emit('ended', msg.sig);
                         delete self.requests[clientId][msg.sig];
                         respond({ fin: msg.sig }); 

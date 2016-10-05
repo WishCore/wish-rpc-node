@@ -99,7 +99,7 @@ Client.prototype.request = function(op, args, stream, cb) {
                     self.write({end: msg.id});
                 },
                 emit: function(data) {
-                    self.write({sig: msg.id, data: data});
+                    return self.write({sig: msg.id, data: data});
                 }
             }
         };
