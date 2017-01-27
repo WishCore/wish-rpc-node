@@ -2,4 +2,6 @@
 /node_modules
 /*.tgz
 /coverage
-
+/deprecated
+/test
+/.npmignore

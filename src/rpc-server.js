@@ -33,7 +33,7 @@
  */
 
 var EventEmitter = require('events').EventEmitter;
-var debug = require('debug')('rpc');
+var debug = console.log;
 var util = require('util');
 
 function RPC(methods) {
