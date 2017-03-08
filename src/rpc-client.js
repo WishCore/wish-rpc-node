@@ -55,7 +55,6 @@ Client.prototype.messageReceived = function(msg, next) {
         //console.log("deleting this request", id);
         delete this.requests[id];
     }
-    setTimeout(next, 250);
     return retval;
 };
 
