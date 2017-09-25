@@ -113,5 +113,13 @@ Client.prototype.request = function(op, args, stream, cb) {
     }
 };
 
+Client.prototype.send = function(id, data) {
+    this.write({ push: id, data: data });
+};
+
+Client.prototype.end = function(id) {
+    this.write({ end: id });
+};
+
 module.exports = {
     Client: Client };

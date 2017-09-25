@@ -222,6 +222,12 @@ RPC.prototype.parse = function(msg, respond, context, clientId) {
     }
     
     try {
+        if( msg.push ) {
+            if(this.requests[clientId] && this.requests[clientId][msg.push]) {
+                self.invokeRaw(msg, respond, this.requests[clientId][msg.push].context, clientId);
+            }
+            return;
+        }
         if( msg.sig ) {
             if(this.requests[clientId] && this.requests[clientId][msg.sig]) {
                 self.invokeRaw(msg, respond, this.requests[clientId][msg.sig].context, clientId);
@@ -325,6 +331,22 @@ RPC.prototype.invokeRaw = function(msg, respond, context, clientId) {
             cb(err, allowed, permissions);
         });
     };
+
+    if(msg.push) {
+         // we got a sig from client... neat, must be streaming!
+        var ctx = this.requests[clientId][msg.push];
+        
+        //console.log('stream context:', ctx);
+        
+        if (msg.data === null) {
+            console.log('msg.data is null:', msg);
+            return;
+        }
+        
+        ctx.data(msg.data);
+        
+        return;
+    }
 
     if(msg.sig) {
          // we got a sig from client... neat, must be streaming!
