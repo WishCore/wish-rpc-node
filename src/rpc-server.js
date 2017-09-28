@@ -242,7 +242,6 @@ RPC.prototype.parse = function(msg, respond, context, clientId) {
                 if (typeof this.requests[clientId][id].end === 'function') {
                     this.requests[clientId][id].end();
                 }
-                console.log("request to end", id);
                 respond({ fin: id });
                 delete this.requests[clientId][id];
                 self.emit('ended', id);
