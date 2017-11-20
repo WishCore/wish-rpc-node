@@ -418,6 +418,7 @@ RPC.prototype.invokeRaw = function(msg, respond, context, clientId) {
             args: msg.args,
             context: context,
             end: null,
+            send: respond,
             acl: acl
         };
         
