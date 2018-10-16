@@ -41,6 +41,7 @@ Client.prototype.messageReceived = function(msg, next) {
         var err;
         if(msg.fin) {
             // This request closed gracefully
+            request.cb.call(request.context, null, null, true);
         } else {
             if(request.canceled) {
                 console.log("This request is canceled. Not calling the callback.");

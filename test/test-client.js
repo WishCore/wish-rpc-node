@@ -13,7 +13,7 @@ describe('RPC Stream Control', function () {
         rpc = new Server();
 
         var signaler = new EventEmitter();
-        setInterval(function() { signaler.emit('online', { luid: 'l1', ruid: 'r4' }); }, 50);
+        const onlineInterval = setInterval(function() { signaler.emit('online', { luid: 'l1', ruid: 'r4' }); }, 50);
         
         rpc.insertMethods({
             _event: {},
@@ -28,6 +28,7 @@ describe('RPC Stream Control', function () {
                     
                     this.end = function() {
                         signaler.removeListener('online', online);
+                        clearInterval(onlineInterval);
                     };
                     
                     res.emit({ I: [
@@ -44,6 +45,8 @@ describe('RPC Stream Control', function () {
                 },
                 _identities: {doc: 'Get identities and updates'},
                 identities: function (req, res) {
+                    res.emit({ a: true, b: false, c: true });
+                    res.emit({ b: true });
                     res.close();
                 },
                 _nothing: {doc: 'Does nothing'},
@@ -73,11 +76,11 @@ describe('RPC Stream Control', function () {
     });
 
     it('should get event.peers', function(done) {
-        var reqid = client.request('event.peers', [], function(err, data) {
-            if(err) { return; }
+        var reqid = client.request('event.peers', [], function(err, data, end) {
+            if(err || end) { return; }
             if(data.offline && data.offline.ruid === 'r1') {
                 //console.log("requesting to cancel request", this.id);
-                setTimeout(this.cancel, 200);
+                setTimeout(this.cancel, 100);
             }
         });
         
@@ -90,7 +93,7 @@ describe('RPC Stream Control', function () {
 
     it('should be ended by remote host', function(done) {
         var reqid = client.request('event.identities', [], function(err, data, end) {
-            console.log("event.identities", err, data, end);
+            //console.log("event.identities", err, data, end);
             if(end) {
                 done();
             }
