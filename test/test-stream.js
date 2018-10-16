@@ -55,8 +55,8 @@ describe('RPC Stream Control', function () {
                     // open new stream
                     var duplex = new RpcStream();
                     
-                    var read = fs.createReadStream('/home/akaustel/mist-ui-2015-11-17.png');
-                    var write = fs.createWriteStream('./another.data');
+                    var read = fs.createReadStream(__dirname + '/support/rsmith_single_blade_of_grass_ds.jpg');
+                    var write = fs.createWriteStream(__dirname + '/../stream-out.jpg');
                     duplex.pipe(write);
                     
                     context.stream = duplex;
