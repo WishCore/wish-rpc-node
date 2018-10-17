@@ -100,7 +100,7 @@ describe('RPC Stream Control', function () {
         };
 
         bufferServerWriteInterval = setInterval(function() {
-            console.log('serverWrite', serverWriteBuffer.length);
+            //console.log('serverWrite', serverWriteBuffer.length);
             while(serverWriteBuffer.length > 0) {
                 var pushed = client.messageReceived(serverWriteBuffer[0], function() {});
                 serverWriteBuffer.shift();
@@ -114,7 +114,7 @@ describe('RPC Stream Control', function () {
         };
         
         bufferClientWriteInterval = setInterval(function() {
-            console.log('clientWrite', clientWriteBuffer.length);
+            //console.log('clientWrite', clientWriteBuffer.length);
             while (clientWriteBuffer.length > 0) {
                 var pushed = rpc.parse(clientWriteBuffer[0], bufferedServerWrite, {});
                 clientWriteBuffer.shift();
