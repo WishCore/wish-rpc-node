@@ -77,16 +77,13 @@ describe('RPC Stream Control', function () {
 
     it('should get event.peers', function(done) {
         var reqid = client.request('event.peers', [], function(err, data, end) {
+            if (end) { return done(); }
+
             if(err || end) { return; }
+
             if(data.offline && data.offline.ruid === 'r1') {
-                //console.log("requesting to cancel request", this.id);
+                // requesting to cancel request
                 setTimeout(this.cancel, 100);
-            }
-        });
-        
-        rpc.on('ended', function(id) {
-            if (id === reqid) {
-                done();
             }
         });
     });

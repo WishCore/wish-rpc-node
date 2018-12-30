@@ -32,14 +32,12 @@
  *   });
  */
 
-var EventEmitter = require('events').EventEmitter;
 var debug = console.log;
 var util = require('util');
 
 function RPC(methods) {
     this.modules = {};
     this.methods = {};
-    //this.selfs = {};
     this.requests = {};
     this.clientIdCounter = 0;
     this.requestId = 0; // internal request id counter
@@ -49,8 +47,6 @@ function RPC(methods) {
         this.insertMethods(methods);
     }
 }
-
-util.inherits(RPC, EventEmitter);
 
 RPC.prototype.destroy = function() {
     for(var i in this.requests) {
@@ -221,7 +217,7 @@ RPC.prototype.parse = function(msg, respond, context, clientId) {
         //console.log("Got RPC request from unspecified client, setting clientId to __none.");
         clientId = '__none';
     }
-    
+
     try {
         if( msg.push ) {
             if(this.requests[clientId] && this.requests[clientId][msg.push]) {
@@ -245,7 +241,6 @@ RPC.prototype.parse = function(msg, respond, context, clientId) {
                 }
                 respond({ fin: id });
                 delete this.requests[clientId][id];
-                self.emit('ended', id);
                 return;
             }
             if( !this.requests[clientId][id] ) {
@@ -305,12 +300,18 @@ RPC.prototype.parse = function(msg, respond, context, clientId) {
     }
 };
 
-// emit event to client
-/*
-RPC.prototype.emit = function(client, event, payload) {
-    this.clients[client]
+RPC.prototype.emit = function(op, data) {
+    for (const client in this.requests) {
+        if (this.requests[client]) {
+            for (const id in this.requests[client]) {
+                if (this.requests[client][id].op === op) {
+                    const { op, send } = this.requests[client][id];
+                    send({ sig: id, data: data });
+                }
+            }
+        }
+    }
 };
-*/
 
 RPC.prototype.invokeRaw = function(msg, respond, context, clientId) {
     var self = this;
@@ -360,8 +361,6 @@ RPC.prototype.invokeRaw = function(msg, respond, context, clientId) {
                 {
                     send: function(data) {
                         if(typeof ctx.end === 'function') { ctx.end(); }
-                        self.emit('ended', msg.sig);
-
                         if(self.requests[clientId][msg.sig]) {
                             delete self.requests[clientId][msg.sig];
                         }
@@ -375,13 +374,11 @@ RPC.prototype.invokeRaw = function(msg, respond, context, clientId) {
                     },
                     error: function(data) {
                         if(typeof ctx.end === 'function') { ctx.end(); }
-                        self.emit('ended', msg.sig);
                         delete self.requests[clientId][msg.sig];
                         respond({ err: msg.sig, data: data }); 
                     },
                     close: function(data) {
                         if(typeof ctx.end === 'function') { ctx.end(); }
-                        self.emit('ended', msg.sig);
                         delete self.requests[clientId][msg.sig];
                         respond({ fin: msg.sig }); 
                     }
@@ -442,8 +439,6 @@ RPC.prototype.invokeRaw = function(msg, respond, context, clientId) {
                 {
                     send: function(data) {
                         if(typeof reqCtx.end === 'function') { reqCtx.end(); }
-                        self.emit('ended', msg.id);
-
                         if(self.requests[clientId][msg.id]) {
                             delete self.requests[clientId][msg.id];
                         }
@@ -457,13 +452,11 @@ RPC.prototype.invokeRaw = function(msg, respond, context, clientId) {
                     },
                     error: function(data) {
                         if(typeof reqCtx.end === 'function') { reqCtx.end(); }
-                        self.emit('ended', msg.id);
                         delete self.requests[clientId][msg.id];
                         respond({ err: msg.id, data: data }); 
                     },
                     close: function(data) {
                         if(typeof reqCtx.end === 'function') { reqCtx.end(); }
-                        self.emit('ended', msg.id);
                         delete self.requests[clientId][msg.id];
                         respond({ fin: msg.id }); 
                     }
