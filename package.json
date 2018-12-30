@@ -10,6 +10,7 @@
     "url": "git+ssh://wish.cto.fi:/git/wish-rpc#master"
   },
   "scripts": {
-    "test": "istanbul cover --hook-run-in-context _mocha -- -R spec"
+    "test": "mocha test/test-*",
+    "coverage": "istanbul cover --hook-run-in-context _mocha -- -R spec"
   }
 }

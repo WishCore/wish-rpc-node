@@ -1,7 +1,7 @@
 
 /**
  * The idea is to be able to easily register methods/functions to be called 
- * remotely, to enable access control and return data directly, asyncronoulsy or
+ * remotely, to enable access control and return data directly, asynchronously or
  * opening a stream which delivers data for long running tasks or large data 
  * transfers. 
  * 
@@ -41,6 +41,7 @@ function RPC(methods) {
     this.methods = {};
     //this.selfs = {};
     this.requests = {};
+    this.clientIdCounter = 0;
     this.requestId = 0; // internal request id counter
     this.invokeId = 0; // counting id for rpc invoke function
     this.acl;
@@ -216,7 +217,7 @@ RPC.prototype.closeAll = function() {
 RPC.prototype.parse = function(msg, respond, context, clientId) {
     var self = this;
 
-    if(!clientId || typeof clientId !== 'string') {
+    if(typeof clientId !== 'string' && typeof clientId !== 'number') {
         //console.log("Got RPC request from unspecified client, setting clientId to __none.");
         clientId = '__none';
     }
@@ -264,7 +265,7 @@ RPC.prototype.parse = function(msg, respond, context, clientId) {
         }
         if ( typeof this.methods[msg.op] === "undefined" ) {
             // service not found
-            respond({ack: msg.id, err: msg.id, data: { code: 300, msg: "No method found: "+msg.op } });
+            respond({ err: msg.id, data: { code: 300, msg: "No method found: "+msg.op } });
             return;
         } else if ( typeof this.acl === 'function' ) {
             if( this.modules[msg.op].acl === false ) {
@@ -274,9 +275,9 @@ RPC.prototype.parse = function(msg, respond, context, clientId) {
             } else {
                 this.acl(this.modules[msg.op].fullname, this.modules[msg.op].acl, context, function(err, allowed, permissions) {
                     if(err) {
-                        return respond({ack: msg.id, err: msg.id, data: { code: 301, msg: "Access control error: "+msg.op } });
+                        return respond({ err: msg.id, data: { code: 301, msg: "Access control error: "+msg.op } });
                     } else if (!allowed) {
-                        return respond({ack: msg.id, err: msg.id, data: { code: 302, msg: "Permission denied: "+msg.op } });
+                        return respond({ err: msg.id, data: { code: 302, msg: "Permission denied: "+msg.op } });
                     }
 
                     context.permissions = {};
@@ -315,7 +316,7 @@ RPC.prototype.invokeRaw = function(msg, respond, context, clientId) {
     var self = this;
     var requestId = ++this.requestId;
     
-    if(!clientId || typeof clientId !== 'string') {
+    if(typeof clientId !== 'string' && typeof clientId !== 'number') {
         console.log("rpc-server.js/invokeRaw: Got RPC request from unspecified client, setting clientId to __none.", clientId, new Error().stack);
         clientId = '__none';
     }
@@ -508,6 +509,24 @@ RPC.prototype.invoke = function(op, args, stream, cb) {
     
     this.parse(msg, response, context, '__invoke');
 };
+
+RPC.prototype.close = function(clientId) {
+    for (var i in this.requests[clientId]) {
+        if (typeof this.requests[clientId][i].end === 'function') {
+            this.requests[clientId][i].end();
+        }
+
+        delete this.requests[clientId][i];
+    }
+
+    delete this.requests[clientId];
+}
+
+RPC.prototype.open = function() {
+    const clientId = ++this.clientIdCounter;
+    this.requests[clientId] = {};
+    return clientId;
+}
 
 module.exports = {
     Server: RPC
