@@ -1,0 +1,57 @@
+{
+    "env": {
+        "es2020": true,
+        "node": true
+    },
+    "extends": [
+        "eslint:recommended",
+        "plugin:@typescript-eslint/recommended"
+    ],
+    "parser": "@typescript-eslint/parser",
+    "parserOptions": {
+        "ecmaVersion": 11
+    },
+    "plugins": [
+        "@typescript-eslint"
+    ],
+    "ignorePatterns": ["node_modules/*", "build/*", "dist/*"],
+    "rules": {
+        "indent": [
+            "error",
+            4,
+            { "SwitchCase": 1 }
+        ],
+        "linebreak-style": [
+            "error",
+            "unix"
+        ],
+        "quotes": [
+            "error",
+            "single",
+            {
+                "avoidEscape": true,
+                "allowTemplateLiterals": true
+            }
+        ],
+        "semi": [
+            "error",
+            "always"
+        ],
+        "array-bracket-spacing": [
+            "error",
+            "never"
+        ],
+        "arrow-return-shorthand": 0,
+        "block-spacing": ["warn", "always"],
+        "curly": "error",
+        "key-spacing": ["error", { "mode": "strict" }],
+        "no-trailing-spaces": "error",
+        "no-async-promise-executor": 1,
+        "object-curly-spacing": ["warn", "always"],
+        "prefer-rest-params": 1,
+        "quote-props": ["error", "as-needed"],
+        "@typescript-eslint/no-var-requires": ["warn"],
+        "@typescript-eslint/no-this-alias": ["warn"],
+        "@typescript-eslint/no-unused-vars": ["error", { "args": "none" }]
+    }
+}

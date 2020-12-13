@@ -5,3 +5,11 @@
 /deprecated
 /test
 /.npmignore
+/.eslintrc.json
+/.DS_Store
+/stream-out.jpg
+/test-stream.data
+/tsconfig.json
+
+# code is in dist
+/src

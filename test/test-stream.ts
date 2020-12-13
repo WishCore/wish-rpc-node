@@ -1,20 +1,15 @@
-var Server = require('../src/index.js').Server;
-var Client = require('../src/index.js').Client;
-var assert = require('assert');
-var stream = require('stream');
-var fs = require('fs');
-var EventEmitter = require('events').EventEmitter;
-
-var util = require('util');
-var Duplex = require('stream').Duplex;
+import { createReadStream, createWriteStream } from 'fs';
+import { Client } from 'src/rpc-client';
+import { Server } from 'src/rpc-server';
+import { Duplex } from 'stream';
 
 describe('RPC Stream Control', function () {
 
-    var rpc;
-    var client;
+    let rpc;
+    let client;
 
-    var bufferServerWriteInterval;
-    var bufferClientWriteInterval;
+    let bufferServerWriteInterval;
+    let bufferClientWriteInterval;
 
     before(function (done) {
         rpc = new Server();
@@ -22,13 +17,13 @@ describe('RPC Stream Control', function () {
         rpc.insertMethods({
             _streamUpload: {},
             streamUpload: function(req, res, context) {
-                var filename = req.args[0].filename;
-                this.pipe(fs.createWriteStream('./'+filename));
+                const filename = req.args[0].filename;
+                this.pipe(createWriteStream('./'+filename));
             },
             _streamDownload: {},
             streamDownload: function(req, res, context) {
-                var filename = req.args[0].filename;
-                fs.createReadStream('./'+filename).pipe(this);
+                const filename = req.args[0].filename;
+                createReadStream('./'+filename).pipe(this);
             },
             _stream: {},
             stream: function(req, res, context) {
@@ -47,34 +42,34 @@ describe('RPC Stream Control', function () {
                     if(req._ack === 0 || req._ack) {
                         context.canSend = true;
                         if(context.emitReadable) {
-                            process.nextTick(function() { context.stream.emit('readable'); });
+                            process.nextTick(function() { context.stream.emit('readable'); });
                             context.emitReadable = false;
                         }
                     }
                 } else {
                     // open new stream
-                    var duplex = new RpcStream();
-                    
-                    var read = fs.createReadStream(__dirname + '/support/rsmith_single_blade_of_grass_ds.jpg');
-                    var write = fs.createWriteStream(__dirname + '/../stream-out.jpg');
+                    const duplex = new RpcStream();
+
+                    const read = createReadStream(__dirname + '/support/rsmith_single_blade_of_grass_ds.jpg');
+                    const write = createWriteStream(__dirname + '/../stream-out.jpg');
                     duplex.pipe(write);
-                    
+
                     context.stream = duplex;
-                    
-                    res.emit({_readable: true, _writable: true});
+
+                    res.emit({ _readable: true, _writable: true });
                     context.offset = 0;
                     context.canSend = true;
-                    
+
                     read.on('readable', function () {
-                        while ( true ) {
+                        for (;;) {
                             if(!context.canSend) {
                                 break;
                             }
-                            var chunk = read.read(1536);
+                            const chunk = read.read(1536);
                             if (chunk === null) {
                                 break;
                             }
-                            context.canSend = res.emit({ offset: context.offset, payload: chunk});
+                            context.canSend = res.emit({ offset: context.offset, payload: chunk });
                             context.offset += chunk.length;
                             if (!context.canSend) {
                                 context.emitReadable = true;
@@ -82,7 +77,7 @@ describe('RPC Stream Control', function () {
                             }
                         }
                     });
-                    
+
                     read.on('end', function() {
                         //console.log("End. No more readable signals needed....");
                         res.emit({ _end: true });
@@ -91,10 +86,10 @@ describe('RPC Stream Control', function () {
             }
         });
 
-        var clientWriteBuffer = [];
-        var serverWriteBuffer = [];
+        const clientWriteBuffer = [];
+        const serverWriteBuffer = [];
 
-        var bufferedServerWrite = function(data) { 
+        const bufferedServerWrite = function(data) {
             serverWriteBuffer.push(data);
             return serverWriteBuffer.length < 500;
         };
@@ -102,27 +97,27 @@ describe('RPC Stream Control', function () {
         bufferServerWriteInterval = setInterval(function() {
             //console.log('serverWrite', serverWriteBuffer.length);
             while(serverWriteBuffer.length > 0) {
-                var pushed = client.messageReceived(serverWriteBuffer[0], function() {});
+                client.messageReceived(serverWriteBuffer[0], () => { /**/ });
                 serverWriteBuffer.shift();
             }
         }, 15);
-        
 
-        var bufferedClientWrite = function(data) { 
+
+        const bufferedClientWrite = function(data) {
             clientWriteBuffer.push(data);
             return clientWriteBuffer.length < 500;
         };
-        
+
         bufferClientWriteInterval = setInterval(function() {
             //console.log('clientWrite', clientWriteBuffer.length);
             while (clientWriteBuffer.length > 0) {
-                var pushed = rpc.parse(clientWriteBuffer[0], bufferedServerWrite, {});
+                rpc.parse(clientWriteBuffer[0], bufferedServerWrite, {});
                 clientWriteBuffer.shift();
             }
         }, 15);
-        
+
         client = new Client(bufferedClientWrite, { mtu: 128 });
-        
+
         done();
     });
 
@@ -134,30 +129,28 @@ describe('RPC Stream Control', function () {
 
 
     it('should stream data to a client file stream', function(done) {
-        var state = 0;
-        var attached = false;
+        let state = 0;
+        let attached = false;
         client.request('stream', [], function(err, data, end) {
-            var self = this;
-            
             if(data._end) {
                 // download stream end signal from server
                 this.stream.push(null);
                 return;
             }
-            
+
             if(data._uend) {
                 // upload stream end signal from server
-                console.log("upload complete.");
+                console.log('upload complete.');
                 return;
             }
-            
+
             switch(state) {
                 case 0:
                     if(data._readable) {
                         // server accepts data as stream
                         state = 1;
                         this.stream = new RpcClientStream();
-                        var out = fs.createWriteStream('./test-stream.data');
+                        const out = createWriteStream('./test-stream.data');
                         out.on('close', function() { done(); });
                         this.stream.pipe(out);
                         this.len = 0;
@@ -168,14 +161,14 @@ describe('RPC Stream Control', function () {
                     // server delivering data to stream
                     if(data.payload) {
                         this.len += data.payload.length;
-                        var canPush = this.stream.push(data.payload);
+                        const canPush = this.stream.push(data.payload);
                         if(!canPush) {
                             if(!attached) {
-                                this.stream.on('more', function() { self.emit({_ack: 9999 }); });
+                                this.stream.on('more', () => { this.emit({ _ack: 9999 }); });
                                 attached = true;
                             }
                         } else {
-                            self.emit({_ack: data.offset});
+                            this.emit({ _ack: data.offset });
                         }
                         return canPush;
                     }
@@ -187,60 +180,56 @@ describe('RPC Stream Control', function () {
 
 
     it('should stream data to a server stream', function(done) {
-        client.request('stream', [], function(err, data, end) {
-            var self = this;
+        client.request('stream', [], (err, data, end) => {
             this.canSend = true;
             this.offset = 0;
-            
+
             if(data._uack) {
-                self.canSend = true;
-                self.in.emit('readable');
+                this.canSend = true;
+                this.in.emit('readable');
                 return;
             }
-            
+
             if(!data._writable) {
                 if(data._readable || data._end || data.payload) {
-                    // we are not interested in the server stream 
+                    // we are not interested in the server stream
                     return;
                 }
             }
-            
+
             if(data._uend) {
                 done();
                 return;
             }
 
-            var len = 0;
-            var clientFileStream = fs.createReadStream('./src/rpc-server.js');
+            const clientFileStream = createReadStream('./src/rpc-server.js');
             this.in = clientFileStream;
-            clientFileStream.on('readable', function() {
-                while ( true ) {
-                    if(!self.canSend) {
+            clientFileStream.on('readable', () => {
+                for (;;) {
+                    if(!this.canSend) {
                         break;
                     }
-                    var chunk = clientFileStream.read(1536);
+                    const chunk = clientFileStream.read(1536);
                     if (chunk === null) {
                         break;
-                    } else {
-                        len += chunk.length;
                     }
-                    self.canSend = self.emit({ offset: self.offset, payload: chunk});
-                    self.offset += chunk.length;
-                    if (!self.canSend) {
-                        self.emitReadable = true;
+                    this.canSend = this.emit({ offset: this.offset, payload: chunk });
+                    this.offset += chunk.length;
+                    if (!this.canSend) {
+                        this.emitReadable = true;
                         break;
                     }
                 }
             });
 
             clientFileStream.on('end', function() {
-                self.emit({ _end: true });
+                this.emit({ _end: true });
             });
-                
+
             return true;
         });
     });
-    
+
     /*
     it('should stream data to a server stream', function(done) {
         client.request('stream', ['this is my file'], function(err, data, end) {
@@ -259,22 +248,21 @@ describe('RPC Stream Control', function () {
  *
  * Stop the read stream by calling stopTimer
  */
-function RpcStream(options) {
-    Duplex.call(this, options); // init
+class RpcStream extends Duplex {
+    constructor(options?) {
+        super(options);
+    }
+
+    _read = function(n) {
+        //console.log("reading data, ", n, 'bytes');
+    };
+
+    /* for write stream just ouptut to stdout */
+    _write = function (chunk, enc, cb) {
+        console.log('====== write:', chunk.length);
+        cb();
+    };
 }
-
-util.inherits(RpcStream, Duplex);
-
-RpcStream.prototype._read = function(n) {
-    //console.log("reading data, ", n, 'bytes');
-};
-
-/* for write stream just ouptut to stdout */
-RpcStream.prototype._write = function (chunk, enc, cb) {
-    console.log('====== write:', chunk.length);
-    cb();
-};
-
 
 /**
  * Duplex stream which:
@@ -283,18 +271,18 @@ RpcStream.prototype._write = function (chunk, enc, cb) {
  *
  * Stop the read stream by calling stopTimer
  */
-function RpcClientStream(options) {
-    Duplex.call(this, options); // init
+class RpcClientStream extends Duplex {
+    constructor(options?) {
+        super(options);
+    }
+
+    _read = function(n) {
+        //console.log("in read reading: ", this._readableState.reading);
+        this.emit('more');
+    };
+
+    _write = function (chunk, enc, cb) {
+        //console.log('write: ', chunk.length);
+        cb();
+    };
 }
-
-util.inherits(RpcClientStream, Duplex);
-
-RpcClientStream.prototype._read = function(n) {
-    //console.log("in read reading: ", this._readableState.reading);
-    this.emit('more');
-};
-
-RpcClientStream.prototype._write = function (chunk, enc, cb) {
-    //console.log('write: ', chunk.length);
-    cb();
-};
