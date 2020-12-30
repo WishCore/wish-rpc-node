@@ -1,5 +1,5 @@
 import { EventEmitter } from 'events';
-import { RequestMessage, ResponseMessage } from 'src';
+import { RequestMessage, ResponseMessage } from './index';
 
 interface RequestMap {
     [requestId: string]: any
