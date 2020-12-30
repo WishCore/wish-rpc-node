@@ -32,7 +32,7 @@
  *   });
  */
 
-import { MethodMap, RequestMap, RequestMessage } from 'src';
+import { MethodMap, RequestMap, RequestMessage } from './index';
 
 const debug = console.log;
 
