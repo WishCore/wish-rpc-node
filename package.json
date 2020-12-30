@@ -2,7 +2,7 @@
   "name": "@wishcore/wish-rpc",
   "author": "André Kaustell <andre.kaustell@wishtech.fi>",
   "description": "An RPC implementation for Node.js, initally developed for the Wish project.",
-  "version": "0.6.6",
+  "version": "0.6.7",
   "main": "dist/index.js",
   "license": "Apache-2.0",
   "repository": {
